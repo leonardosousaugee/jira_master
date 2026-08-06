@@ -1,0 +1,12 @@
+server:
+  port: ${SERVER_PORT:8080}
+
+jira:
+  base-url: ${JIRA_BASE_URL}
+  email: ${JIRA_EMAIL}
+  api-token: ${JIRA_API_TOKEN}
+  default-project-key: ${JIRA_DEFAULT_PROJECT_KEY:KAN}
+
+springdoc:
+  swagger-ui:
+    path: /swagger-ui.html
