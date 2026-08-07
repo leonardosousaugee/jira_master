@@ -4,6 +4,7 @@ import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import org.junit.jupiter.api.Test;
 
+import java.util.List;
 import java.util.Map;
 
 import static org.assertj.core.api.Assertions.assertThat;
@@ -42,5 +43,23 @@ class AdfMapperTest {
     @Test
     void deveRetornarStringVaziaQuandoAdfForNulo() {
         assertThat(mapper.adfParaTexto(null)).isEmpty();
+    }
+
+    @Test
+    void deveRetornarDocumentoAdfVazioParaTextoNulo() {
+        Map<String, Object> adf = mapper.textoParaAdf(null);
+
+        assertThat(adf.get("type")).isEqualTo("doc");
+        assertThat(adf.get("version")).isEqualTo(1);
+        assertThat(adf.get("content")).isEqualTo(List.of());
+    }
+
+    @Test
+    void deveRetornarDocumentoAdfVazioParaTextoEmBranco() {
+        Map<String, Object> adf = mapper.textoParaAdf("");
+
+        assertThat(adf.get("type")).isEqualTo("doc");
+        assertThat(adf.get("version")).isEqualTo(1);
+        assertThat(adf.get("content")).isEqualTo(List.of());
     }
 }

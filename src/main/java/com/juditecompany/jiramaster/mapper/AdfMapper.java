@@ -11,6 +11,15 @@ import java.util.Map;
 public class AdfMapper {
 
     public Map<String, Object> textoParaAdf(String texto) {
+        Map<String, Object> documento = new LinkedHashMap<>();
+        documento.put("type", "doc");
+        documento.put("version", 1);
+
+        if (texto == null || texto.isBlank()) {
+            documento.put("content", List.of());
+            return documento;
+        }
+
         Map<String, Object> textNode = new LinkedHashMap<>();
         textNode.put("type", "text");
         textNode.put("text", texto);
@@ -19,9 +28,6 @@ public class AdfMapper {
         paragraph.put("type", "paragraph");
         paragraph.put("content", List.of(textNode));
 
-        Map<String, Object> documento = new LinkedHashMap<>();
-        documento.put("type", "doc");
-        documento.put("version", 1);
         documento.put("content", List.of(paragraph));
         return documento;
     }
