@@ -34,7 +34,7 @@ public class JiraCardServiceImpl implements JiraCardService {
     @Override
     public CardResponse criarCard(CriarCardRequest request) {
         String projectKey = request.projectKey() != null ? request.projectKey() : jiraProperties.getDefaultProjectKey();
-        String tipoIssue = request.tipoIssue() != null ? request.tipoIssue() : "Task";
+        String tipoIssue = request.tipoIssue() != null ? request.tipoIssue() : "Tarefa";
         Object descricaoAdf = request.descricao() != null ? adfMapper.textoParaAdf(request.descricao()) : null;
 
         var fields = new JiraIssueFields(new JiraFieldRef(projectKey), request.titulo(), descricaoAdf,

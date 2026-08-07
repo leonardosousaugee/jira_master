@@ -23,7 +23,9 @@ public class JiraApiClient {
 
     public JiraSearchResponseDto buscarIssues(String jql) {
         return restClient.get()
-                .uri(uriBuilder -> uriBuilder.path("/search").queryParam("jql", jql).build())
+                .uri(uriBuilder -> uriBuilder.path("/search/jql").queryParam("jql", jql)
+                        .queryParam("fields", "summary,description,status,priority,issuetype,project,created,updated")
+                        .build())
                 .retrieve()
                 .body(JiraSearchResponseDto.class);
     }
