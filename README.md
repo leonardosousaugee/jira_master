@@ -1,45 +1,295 @@
-**Edit a file, create a new file, and clone from Bitbucket in under 2 minutes**
+# jira_master
 
-When you're done, you can delete the content in this README and update the file with details for others getting started with your repository.
+Microsserviço REST que expõe as operações de card do Jira Cloud como uma API estável e enxuta,
+pensada para ser consumida por agentes automatizados — não por humanos clicando no board.
 
-*We recommend that you open this README in another tab as you perform the tasks below. You can [watch our video](https://youtu.be/0ocf7u76WSo) for a full demo of all the steps in this tutorial. Open the video in a new tab to avoid leaving Bitbucket.*
-
----
-
-## Edit a file
-
-You’ll start by editing this README file to learn how to edit a file in Bitbucket.
-
-1. Click **Source** on the left side.
-2. Click the README.md link from the list of files.
-3. Click the **Edit** button.
-4. Delete the following text: *Delete this line to make a change to the README from Bitbucket.*
-5. After making your change, click **Commit** and then **Commit** again in the dialog. The commit page will open and you’ll see the change you just made.
-6. Go back to the **Source** page.
+O Jira é a fonte da verdade do trabalho: cada tarefa é um card, cada subtarefa é um sub-card, e o
+custo de execução fica gravado no próprio card. Este serviço é a única porta de entrada para isso.
+O agente que executa trabalho não fala com a API do Jira diretamente; fala com o `jira_master`, que
+traduz, valida e mantém as invariantes que o Jira sozinho não garante.
 
 ---
 
-## Create a file
+## Índice
 
-Next, you’ll add a new file to this repository.
-
-1. Click the **New file** button at the top of the **Source** page.
-2. Give the file a filename of **contributors.txt**.
-3. Enter your name in the empty file space.
-4. Click **Commit** and then **Commit** again in the dialog.
-5. Go back to the **Source** page.
-
-Before you move on, go ahead and explore the repository. You've already seen the **Source** page, but check out the **Commits**, **Branches**, and **Settings** pages.
+- [Por que existe](#por-que-existe)
+- [Arquitetura](#arquitetura)
+- [Como rodar](#como-rodar)
+- [Configuração](#configuração)
+- [Endpoints](#endpoints)
+- [Ledger de custo](#ledger-de-custo)
+- [HOLD — o kill switch da árvore](#hold--o-kill-switch-da-árvore)
+- [Erros](#erros)
+- [Testes](#testes)
+- [Estrutura do repositório](#estrutura-do-repositório)
+- [Documentação](#documentação)
 
 ---
 
-## Clone a repository
+## Por que existe
 
-Use these steps to clone from SourceTree, our client for using the repository command-line free. Cloning allows you to work on your files locally. If you don't yet have SourceTree, [download and install first](https://www.sourcetreeapp.com/). If you prefer to clone from the command line, see [Clone a repository](https://confluence.atlassian.com/x/4whODQ).
+A API do Jira Cloud é ampla, verbosa e cheia de detalhe de plataforma: ADF para texto, transições
+por id numérico descoberto em runtime, tipos de item que variam por projeto, JQL para qualquer
+leitura não trivial. Um agente que precisa apenas "criar card", "mover para HOLD" ou "registrar o
+que essa execução custou" não deveria carregar nada disso.
 
-1. You’ll see the clone button under the **Source** heading. Click that button.
-2. Now click **Check out in SourceTree**. You may need to create a SourceTree account or log in.
-3. When you see the **Clone New** dialog in SourceTree, update the destination path and name if you’d like to and then click **Clone**.
-4. Open the directory you just created to see your repository’s files.
+O `jira_master` resolve três coisas que a API bruta não resolve:
 
-Now that you're more familiar with your Bitbucket repository, go ahead and add a new file locally. You can [push your change back to Bitbucket with SourceTree](https://confluence.atlassian.com/x/iqyBMg), or you can [add, commit,](https://confluence.atlassian.com/x/8QhODQ) and [push from the command line](https://confluence.atlassian.com/x/NQ0zDQ).
+1. **Vocabulário do domínio.** Endpoints falam de card, sub-card, etapa e custo — não de issue,
+   ADF, transition id e customfield.
+2. **Invariantes de custo.** Custo é gravado como linhas auditáveis dentro do card, nunca como um
+   total mutável. Estorno acrescenta linha negativa em vez de apagar histórico.
+3. **Falha parcial visível.** Operações que tocam vários cards (como o HOLD em árvore) reportam
+   card a card o que funcionou e o que não funcionou, em vez de devolver um booleano que esconde
+   metade do resultado.
+
+## Arquitetura
+
+Spring Boot 3.3, Java 21. Sem banco de dados — o estado mora no Jira.
+
+```
+controller/   JiraCardController          camada HTTP, /api/cards
+service/      JiraCardService(+Impl)      regras: custo, HOLD, descoberta de transição
+ledger/       LedgerDeCusto, LinhaCusto   leitura e escrita do bloco de custo na descrição
+mapper/       JiraCardMapper, AdfMapper   Jira <-> domínio; texto <-> ADF
+client/       JiraApiClient + DTOs        chamadas HTTP à API do Jira Cloud
+config/       JiraProperties, TarifaProperties, RestClientConfig, OpenApiConfig
+exception/    GlobalExceptionHandler      exceções de domínio -> RFC 7807 ProblemDetail
+```
+
+O fluxo de uma requisição é sempre o mesmo: controller valida o corpo, service aplica a regra,
+client fala com o Jira, mapper traduz a resposta. Nenhuma camada pula a seguinte.
+
+## Como rodar
+
+Pré-requisitos: **JDK 21** e **Maven 3.9+**.
+
+```bash
+git clone https://bitbucket.org/juditecompany/jira_master.git
+cd jira_master
+cp .env.example .env    # preencha as credenciais
+mvn spring-boot:run
+```
+
+Sobe em `http://localhost:8080`.
+
+| Recurso | URL |
+|---|---|
+| Swagger UI | http://localhost:8080/swagger-ui.html |
+| OpenAPI JSON | http://localhost:8080/v3/api-docs |
+
+Empacotar:
+
+```bash
+mvn clean package
+java -jar target/jira-master-service-1.0.0.jar
+```
+
+## Configuração
+
+Variáveis lidas do `.env` na raiz (via `spring-dotenv`) ou do ambiente. O `.env` está no
+`.gitignore` — **nunca comite credencial**.
+
+| Variável | Obrigatória | Padrão | O que é |
+|---|---|---|---|
+| `JIRA_BASE_URL` | sim | — | URL da instância, ex. `https://empresa.atlassian.net` |
+| `JIRA_EMAIL` | sim | — | E-mail da conta Atlassian usada na autenticação |
+| `JIRA_API_TOKEN` | sim | — | API token da conta ([gerar aqui](https://id.atlassian.com/manage-profile/security/api-tokens)) |
+| `JIRA_DEFAULT_PROJECT_KEY` | não | `KAN` | Projeto usado quando a requisição não informa um |
+| `JIRA_SUBTASK_ISSUE_TYPE_ID` | não | vazio | Id do tipo de subtarefa. Em branco, é descoberto em runtime lendo os tipos do projeto — preencha só quando o projeto tem mais de um tipo de subtarefa e a descoberta escolhe o errado |
+| `SERVER_PORT` | não | `8080` | Porta HTTP |
+
+As três primeiras são validadas na subida: faltando qualquer uma, a aplicação não inicia.
+
+As tarifas de custo por modelo ficam em `src/main/resources/application.yml`, sob `custo.tarifas`,
+em dólares por milhão de tokens. Preço muda e modelo novo aparece — por isso configuração e não
+literal no código.
+
+## Endpoints
+
+Base: `/api/cards`
+
+### Cards
+
+| Método | Rota | O que faz | Sucesso |
+|---|---|---|---|
+| `POST` | `/api/cards` | Cria um card | `201` |
+| `GET` | `/api/cards/abertos?projectKey=` | Lista cards não concluídos. Sem `projectKey`, usa o projeto padrão | `200` |
+| `GET` | `/api/cards/{issueKey}` | Lê um card, já com o custo separado da descrição | `200` |
+| `PATCH` | `/api/cards/{issueKey}` | Edita título e/ou descrição | `200` |
+| `PATCH` | `/api/cards/{issueKey}/prioridade` | Altera a prioridade | `204` |
+
+### Fluxo
+
+| Método | Rota | O que faz | Sucesso |
+|---|---|---|---|
+| `GET` | `/api/cards/{issueKey}/transicoes` | Lista as transições possíveis a partir do estado atual | `200` |
+| `POST` | `/api/cards/{issueKey}/etapa` | Move o card para a etapa informada, por nome | `204` |
+| `POST` | `/api/cards/{issueKey}/hold` | Move o card **e toda a sua árvore** para HOLD | `200` |
+
+### Sub-cards
+
+| Método | Rota | O que faz | Sucesso |
+|---|---|---|---|
+| `POST` | `/api/cards/{issueKey}/subcards` | Cria uma subtarefa sob o card | `201` |
+| `GET` | `/api/cards/{issueKey}/subcards` | Lista as subtarefas do card | `200` |
+
+### Custo
+
+| Método | Rota | O que faz | Sucesso |
+|---|---|---|---|
+| `POST` | `/api/cards/{issueKey}/custos` | Registra uma execução e devolve a linha gravada | `201` |
+| `GET` | `/api/cards/{issueKey}/custo` | Soma o custo do card e de toda a árvore | `200` |
+| `POST` | `/api/cards/{issueKey}/custos/estornos` | Estorna uma linha, acrescentando a negativa | `201` |
+
+### Comentários
+
+| Método | Rota | O que faz | Sucesso |
+|---|---|---|---|
+| `POST` | `/api/cards/{issueKey}/comentarios` | Adiciona um comentário | `201` |
+
+### Exemplos
+
+Criar um card:
+
+```bash
+curl -X POST http://localhost:8080/api/cards \
+  -H 'Content-Type: application/json; charset=utf-8' \
+  -d '{"titulo":"Migrar autenticação","descricao":"Trocar basic auth por OAuth","tipoIssue":"Tarefa"}'
+```
+
+Registrar o custo de uma execução — os quatro contadores vão **separados**, sem soma e sem
+conversão para dólar do lado de quem chama:
+
+```bash
+curl -X POST http://localhost:8080/api/cards/KAN-42/custos \
+  -H 'Content-Type: application/json' \
+  -d '{"modelo":"claude-opus-5","inputTokens":12000,"cacheCreationTokens":8000,"cacheReadTokens":150000,"outputTokens":3000}'
+```
+
+Ler o custo da árvore:
+
+```bash
+curl http://localhost:8080/api/cards/KAN-42/custo
+```
+
+```json
+{
+  "issueKey": "KAN-42",
+  "custoProprio": 0.2185,
+  "porCard": [
+    { "issueKey": "KAN-42", "custo": 0.2185, "execucoes": 2 },
+    { "issueKey": "KAN-43", "custo": 0.0412, "execucoes": 1 }
+  ],
+  "custoTotal": 0.2597,
+  "filhosSemCusto": ["KAN-44"],
+  "linhasDescartadas": 0
+}
+```
+
+## Ledger de custo
+
+Custo não mora em campo customizado nem em banco: mora na **descrição do próprio card**, dentro de
+um bloco delimitado por sentinelas.
+
+```
+Texto humano da descrição, preservado byte a byte.
+
+<!-- custo:v1 -->
+{"ts":"2026-08-08T14:03","card":"KAN-42","in":170000,"out":3000,"usd":0.2185}
+{"ts":"2026-08-08T15:10","card":"KAN-42","in":22000,"out":800,"usd":0.0410}
+<!-- /custo -->
+```
+
+As decisões que sustentam esse formato:
+
+- **O bloco vive no card pai.** Linhas de execução de subtarefas ficam gravadas no pai, com o campo
+  `card` dizendo qual subtarefa gastou. Um card só — o topo da árvore — carrega o histórico
+  inteiro, então somar a árvore é uma leitura, não uma varredura. Consultar o custo de uma
+  subtarefa lê o bloco do pai e filtra pelas linhas dela.
+- **Uma linha JSON por execução, append-only.** O total nunca é gravado; é somado na leitura. Total
+  gravado desincroniza, linha não.
+- **Tudo fora das sentinelas sobrevive intacto.** A escrita faz splice só do miolo, então texto
+  humano na descrição nunca é perdido.
+- **Os quatro contadores vêm separados de quem chama.** Cache read custa um décimo do input cheio e
+  domina o volume de sessão longa; somar tudo numa tarifa só erra por multiplicadores, sempre para
+  cima. O campo `in` da linha é volume lido, não custo — o custo está em `usd` e só nele.
+- **Estorno acrescenta, não apaga.** `POST /custos/estornos` grava uma linha nova com valores
+  negativos e o campo `estorna` apontando o `ts` da linha corrigida. O total volta ao certo e a
+  auditoria mantém o registro do erro.
+- **Linha malformada é ignorada e contada,** nunca derruba a leitura — um caractere torto num card
+  não pode cegar o custo da árvore inteira. A contagem sai em `linhasDescartadas`.
+- **Zero e "não medido" são coisas diferentes.** `custoTotal` é nulo quando não existe nenhuma
+  linha, e `filhosSemCusto` lista os cards da árvore sem custo registrado. Mentir para baixo no
+  número que autoriza continuar gastando é o pior erro possível aqui.
+
+## HOLD — o kill switch da árvore
+
+`POST /api/cards/{issueKey}/hold` para o card e todos os seus sub-cards.
+
+- **`BLOQUEADO` e `HOLD` são o mesmo estado.** O fluxo do KAN só tem `HOLD`; `BLOQUEADO`, `BLOCKED`
+  e `BLOCK` são reconhecidos como sinônimos.
+- **Pai primeiro, filhos depois.** O pai em HOLD é a flag que o health check entre blocos lê.
+- **Falha parcial é reportada, nunca engolida nem revertida em silêncio.** A resposta traz uma
+  entrada por card com `movido` e uma `observacao` explicando o motivo — este endpoint precisa ser
+  útil justamente quando as coisas já estão dando errado, e nessa hora saber quais cards pararam
+  vale mais que uma resposta binária.
+
+```json
+{
+  "resultados": [
+    { "issueKey": "KAN-42", "movido": true, "observacao": null },
+    { "issueKey": "KAN-43", "movido": true, "observacao": "ja estava em HOLD" },
+    { "issueKey": "KAN-44", "movido": false, "observacao": "nenhuma transicao para HOLD a partir de \"Concluído\"" }
+  ]
+}
+```
+
+## Erros
+
+Toda falha sai como `ProblemDetail` (RFC 7807), com campos extras quando ajudam a corrigir a
+chamada.
+
+| Situação | Status | Campo extra |
+|---|---|---|
+| Card não encontrado | `404` | — |
+| Linha de custo a estornar não encontrada | `404` | — |
+| Etapa de destino inexistente | `400` | `transicoesDisponiveis` |
+| Corpo inválido (validação) | `400` | `erros` |
+| Corpo ilegível (JSON quebrado, encoding errado) | `400` | — |
+| Modelo sem tarifa configurada | `422` | `modelosConhecidos` |
+| Tipo de subtarefa não encontrado no projeto | `422` | `tiposDisponiveis` |
+| Erro repassado pela API do Jira | status do Jira | — |
+| Qualquer outra falha | `500` | — |
+
+O handler de corpo ilegível existe de propósito: sem ele, um `Content-Type` com charset errado
+viraria `500` mudo e esconderia a causa real.
+
+## Testes
+
+```bash
+mvn test
+```
+
+78 testes, sem dependência de rede — o client do Jira é exercitado contra `MockRestServiceServer`.
+
+## Estrutura do repositório
+
+```
+src/main/java/...     código da aplicação
+src/main/resources/   application.yml (tarifas, portas, springdoc)
+src/test/java/...     suíte de testes
+docs/                 protocolo operacional e specs de design
+.env.example          modelo de configuração
+```
+
+## Documentação
+
+- [`docs/protocolo-de-controle-de-tarefas.md`](docs/protocolo-de-controle-de-tarefas.md) —
+  instruções operacionais que um agente segue para conduzir trabalho pelo board. Escrito para ser
+  lido por um agente em execução.
+- [`docs/superpowers/specs/`](docs/superpowers/specs/) — specs de design, uma por decisão:
+  desenho geral do microsserviço, ledger de custo no card, e a equivalência entre HOLD e BLOQUEADO.
+- [`docs/superpowers/plans/`](docs/superpowers/plans/) — plano de implementação seguido na
+  construção.
+- [`TODO-ledger-de-custo.md`](TODO-ledger-de-custo.md) — pacote de trabalho do ledger.
