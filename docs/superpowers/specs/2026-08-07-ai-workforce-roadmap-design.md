@@ -39,8 +39,10 @@ página que as expõe.
 | 8 | `espolios.md` opcional ao fim de cada rodada — agente sugere linhas para o próprio `TRAINING.md`/`CLAUDE.md` | Em aberto (pode ou não existir) |
 | 9 | Registro de agentes + portabilidade total (outro colaborador, ou o PC corporativo do Leonardo) | Planejado |
 
-Mapeamento de status → coluna do quadro na página: **Concluído** (nenhuma frente ainda),
+Mapeamento de status → marcador na linha do tempo: **Concluído** (nenhuma frente ainda),
 **Quase lá** (frente 1), **Planejado** (frentes 2, 3, 4, 5, 6, 7, 9), **Em aberto** (frente 8).
+A ordem na página é a ordem numérica das frentes (1 → 9) — é uma linha do tempo, não colunas
+por status.
 
 ## Formato da página
 
@@ -82,10 +84,12 @@ deliberados — tratamento editorial, não utilitário. Referência de mood pedi
    desativado em `prefers-reduced-motion`).
 2. **Faixa de status**: contadores rápidos (ex. "9 frentes · 1 quase lá · 7 planejadas ·
    1 em aberto · atualizado em 07/08/2026").
-3. **Quadro kanban**: 4 colunas (Concluído / Quase lá / Planejado / Em aberto), cada frente é
-   um card com número, título, uma linha de resumo e a etiqueta de status. Clique expande um
-   painel inline com o detalhe completo (a descrição da tabela acima). Em telas estreitas as
-   colunas empilham verticalmente, mantendo a ordem.
+3. **Linha do tempo vertical**: uma trilha central com as 9 frentes em ordem (1 → 9), cada uma
+   um nó conectado ao próximo por uma linha. O marcador de cada nó reflete o status (cheio/glow
+   para concluído ou quase lá, vazio para planejado, tracejado para em aberto). Ao lado do nó,
+   número, título e uma linha de resumo; clique expande um painel inline com o detalhe completo
+   (a descrição da tabela acima). Em telas estreitas a trilha e os nós continuam verticais, sem
+   mudança de estrutura (já é a orientação natural para mobile).
 4. **Nota de rodapé**: o documento é vivo — mesmo link, atualizado conforme cada frente avança;
    aponta que o acompanhamento também continua nesta conversa.
 
@@ -100,6 +104,6 @@ deliberados — tratamento editorial, não utilitário. Referência de mood pedi
 ## Critério de pronto
 
 - Página publicada como artifact, tema escuro, sem paleta roxa.
-- As 9 frentes presentes, cada uma na coluna correta, com o resumo da tabela acima.
+- As 9 frentes presentes, em ordem, cada uma com o status e resumo da tabela acima.
 - Efeitos (canvas ambiente + spotlight) funcionam e respeitam `prefers-reduced-motion`.
-- Responsiva: colunas empilham em telas estreitas sem scroll horizontal na página.
+- Responsiva: a trilha vertical não gera scroll horizontal na página em telas estreitas.
