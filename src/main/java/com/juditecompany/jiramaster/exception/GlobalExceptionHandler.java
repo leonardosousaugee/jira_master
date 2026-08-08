@@ -35,6 +35,13 @@ public class GlobalExceptionHandler {
         return ProblemDetail.forStatusAndDetail(HttpStatus.valueOf(ex.getStatus().value()), ex.getMessage());
     }
 
+    @ExceptionHandler(ModeloDesconhecidoException.class)
+    public ProblemDetail handleModeloDesconhecido(ModeloDesconhecidoException ex) {
+        ProblemDetail problema = ProblemDetail.forStatusAndDetail(HttpStatus.UNPROCESSABLE_ENTITY, ex.getMessage());
+        problema.setProperty("modelosConhecidos", ex.getModelosConhecidos());
+        return problema;
+    }
+
     @ExceptionHandler(SubtaskIssueTypeNotFoundException.class)
     public ProblemDetail handleTipoDeSubtarefaNaoEncontrado(SubtaskIssueTypeNotFoundException ex) {
         ProblemDetail problema = ProblemDetail.forStatusAndDetail(HttpStatus.UNPROCESSABLE_ENTITY, ex.getMessage());

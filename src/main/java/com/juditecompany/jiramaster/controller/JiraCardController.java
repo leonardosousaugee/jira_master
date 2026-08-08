@@ -2,6 +2,7 @@ package com.juditecompany.jiramaster.controller;
 
 import com.juditecompany.jiramaster.dto.request.*;
 import com.juditecompany.jiramaster.dto.response.*;
+import com.juditecompany.jiramaster.ledger.LinhaCusto;
 import com.juditecompany.jiramaster.service.JiraCardService;
 import io.swagger.v3.oas.annotations.tags.Tag;
 import jakarta.validation.Valid;
@@ -67,6 +68,12 @@ public class JiraCardController {
                                                    @Valid @RequestBody EditarPrioridadeRequest request) {
         service.editarPrioridade(issueKey, request);
         return ResponseEntity.noContent().build();
+    }
+
+    @PostMapping("/{issueKey}/custos")
+    public ResponseEntity<LinhaCusto> registrarCusto(@PathVariable String issueKey,
+                                                       @Valid @RequestBody RegistrarCustoRequest request) {
+        return ResponseEntity.status(HttpStatus.CREATED).body(service.registrarCusto(issueKey, request));
     }
 
     @PostMapping("/{issueKey}/comentarios")

@@ -2,6 +2,7 @@ package com.juditecompany.jiramaster.service;
 
 import com.juditecompany.jiramaster.dto.request.*;
 import com.juditecompany.jiramaster.dto.response.*;
+import com.juditecompany.jiramaster.ledger.LinhaCusto;
 
 import java.util.List;
 
@@ -24,4 +25,6 @@ public interface JiraCardService {
     void editarPrioridade(String issueKey, EditarPrioridadeRequest request);
 
     ComentarioResponse adicionarComentario(String issueKey, AdicionarComentarioRequest request);
+
+    LinhaCusto registrarCusto(String issueKey, RegistrarCustoRequest request);
 }

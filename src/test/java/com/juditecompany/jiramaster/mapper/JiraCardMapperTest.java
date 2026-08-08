@@ -5,6 +5,7 @@ import com.juditecompany.jiramaster.client.dto.*;
 import com.juditecompany.jiramaster.dto.response.CardResponse;
 import com.juditecompany.jiramaster.dto.response.ComentarioResponse;
 import com.juditecompany.jiramaster.dto.response.TransicaoResponse;
+import com.juditecompany.jiramaster.ledger.LedgerDeCusto;
 import org.junit.jupiter.api.Test;
 
 import java.time.Instant;
@@ -13,8 +14,8 @@ import static org.assertj.core.api.Assertions.assertThat;
 
 class JiraCardMapperTest {
 
-    private final JiraCardMapper mapper = new JiraCardMapper(new AdfMapper());
     private final ObjectMapper objectMapper = new ObjectMapper();
+    private final JiraCardMapper mapper = new JiraCardMapper(new AdfMapper(), new LedgerDeCusto(objectMapper));
 
     @Test
     void deveMapearIssueParaCardResponse() throws Exception {
@@ -23,7 +24,7 @@ class JiraCardMapperTest {
                 """);
         var fields = new JiraIssueResponseFields(
                 "Titulo", descricao, new JiraStatusDto("To Do"), new JiraNameRef("Medium"),
-                new JiraNameRef("Task"), new JiraFieldRef("KAN"),
+                new JiraNameRef("Task"), new JiraFieldRef("KAN"), null,
                 "2026-08-05T10:00:00.000+0000", "2026-08-05T11:00:00.000+0000");
         var issue = new JiraIssueDto("10001", "KAN-1", fields);
 

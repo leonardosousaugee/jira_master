@@ -11,6 +11,7 @@ public record JiraIssueResponseFields(
         JiraNameRef priority,
         JiraNameRef issuetype,
         JiraFieldRef project,
+        JiraFieldRef parent,
         String created,
         String updated
 ) {

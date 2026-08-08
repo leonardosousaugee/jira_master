@@ -8,6 +8,26 @@ jira:
   default-project-key: ${JIRA_DEFAULT_PROJECT_KEY:KAN}
   subtask-issue-type-id: ${JIRA_SUBTASK_ISSUE_TYPE_ID:}
 
+# Tarifas em dolares por milhao de tokens. Os quatro contadores tem precos diferentes:
+# cache read custa um decimo do input cheio e domina o volume de sessao longa.
+custo:
+  tarifas:
+    claude-opus-5:
+      input: 5.00
+      output: 25.00
+      cache-write: 6.25
+      cache-read: 0.50
+    claude-sonnet-5:
+      input: 3.00
+      output: 15.00
+      cache-write: 3.75
+      cache-read: 0.30
+    claude-haiku-4-5:
+      input: 1.00
+      output: 5.00
+      cache-write: 1.25
+      cache-read: 0.10
+
 springdoc:
   swagger-ui:
     path: /swagger-ui.html

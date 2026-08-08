@@ -1,14 +1,20 @@
 package com.juditecompany.jiramaster.service;
 
+import com.fasterxml.jackson.databind.JsonNode;
+import com.fasterxml.jackson.databind.ObjectMapper;
 import com.juditecompany.jiramaster.client.JiraApiClient;
 import com.juditecompany.jiramaster.client.dto.*;
 import com.juditecompany.jiramaster.config.JiraProperties;
+import com.juditecompany.jiramaster.config.TarifaProperties;
 import com.juditecompany.jiramaster.dto.request.*;
 import com.juditecompany.jiramaster.dto.response.CardResponse;
 import com.juditecompany.jiramaster.exception.CardNotFoundException;
 import com.juditecompany.jiramaster.exception.JiraApiException;
+import com.juditecompany.jiramaster.exception.ModeloDesconhecidoException;
 import com.juditecompany.jiramaster.exception.SubtaskIssueTypeNotFoundException;
 import com.juditecompany.jiramaster.exception.TransitionNotFoundException;
+import com.juditecompany.jiramaster.ledger.LedgerDeCusto;
+import com.juditecompany.jiramaster.ledger.LinhaCusto;
 import com.juditecompany.jiramaster.mapper.AdfMapper;
 import com.juditecompany.jiramaster.mapper.JiraCardMapper;
 import org.junit.jupiter.api.BeforeEach;
@@ -18,7 +24,12 @@ import org.mockito.junit.jupiter.MockitoExtension;
 import org.junit.jupiter.api.extension.ExtendWith;
 import org.springframework.http.HttpStatus;
 
+import java.math.BigDecimal;
+import java.time.Clock;
+import java.time.Instant;
+import java.time.ZoneOffset;
 import java.util.List;
+import java.util.Map;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
@@ -37,16 +48,36 @@ class JiraCardServiceImplTest {
     @Mock
     private JiraApiClient jiraApiClient;
 
+    private static final Clock RELOGIO = Clock.fixed(Instant.parse("2026-08-08T13:04:30Z"), ZoneOffset.UTC);
+
     private JiraCardServiceImpl service;
     private final AdfMapper adfMapper = new AdfMapper();
-    private final JiraCardMapper cardMapper = new JiraCardMapper(adfMapper);
+    private final ObjectMapper objectMapper = new ObjectMapper();
+    private final LedgerDeCusto ledger = new LedgerDeCusto(objectMapper);
+    private final JiraCardMapper cardMapper = new JiraCardMapper(adfMapper, ledger);
 
     private JiraIssueDto issueDeExemplo(String key, String statusNome) {
+        return issueDeExemplo(key, statusNome, null, null);
+    }
+
+    private JiraIssueDto issueDeExemplo(String key, String statusNome, String chavePai, String descricao) {
+        JsonNode descricaoAdf = descricao == null
+                ? null
+                : objectMapper.valueToTree(adfMapper.textoParaAdf(descricao));
         var fields = new JiraIssueResponseFields(
-                "Titulo", null, new JiraStatusDto(statusNome), new JiraNameRef("Medium"),
+                "Titulo", descricaoAdf, new JiraStatusDto(statusNome), new JiraNameRef("Medium"),
                 new JiraNameRef("Task"), new JiraFieldRef("KAN"),
+                chavePai == null ? null : new JiraFieldRef(chavePai),
                 "2026-08-05T10:00:00.000+0000", "2026-08-05T10:00:00.000+0000");
         return new JiraIssueDto("10001", key, fields);
+    }
+
+    private TarifaProperties tarifasDeTeste() {
+        TarifaProperties tarifas = new TarifaProperties();
+        tarifas.setTarifas(new java.util.LinkedHashMap<>(Map.of("claude-opus-5",
+                new TarifaProperties.Tarifa(new BigDecimal("5.00"), new BigDecimal("25.00"),
+                        new BigDecimal("6.25"), new BigDecimal("0.50")))));
+        return tarifas;
     }
 
     private JiraProperties propriedadesDeTeste() {
@@ -67,7 +98,7 @@ class JiraCardServiceImplTest {
 
     @BeforeEach
     void setUp() {
-        service = new JiraCardServiceImpl(jiraApiClient, cardMapper, adfMapper, propriedadesDeTeste());
+        service = new JiraCardServiceImpl(jiraApiClient, cardMapper, adfMapper, propriedadesDeTeste(), tarifasDeTeste(), ledger, RELOGIO);
     }
 
     @Test
@@ -186,7 +217,7 @@ class JiraCardServiceImplTest {
     void devePreferirTipoDeSubtarefaConfiguradoSemConsultarOProjeto() {
         JiraProperties properties = propriedadesDeTeste();
         properties.setSubtaskIssueTypeId("99999");
-        service = new JiraCardServiceImpl(jiraApiClient, cardMapper, adfMapper, properties);
+        service = new JiraCardServiceImpl(jiraApiClient, cardMapper, adfMapper, properties, tarifasDeTeste(), ledger, RELOGIO);
         when(jiraApiClient.criarIssue(any())).thenReturn(new JiraCreatedIssueDto("10002", "KAN-2"));
         when(jiraApiClient.buscarIssuePorChave("KAN-2")).thenReturn(issueDeExemplo("KAN-2", "To Do"));
 
@@ -205,6 +236,70 @@ class JiraCardServiceImplTest {
                 .isInstanceOf(SubtaskIssueTypeNotFoundException.class);
 
         verify(jiraApiClient, never()).criarIssue(any());
+    }
+
+    @Test
+    void deveGravarCustoNoCardPaiEMarcarALinhaComAChaveDoFilho() {
+        when(jiraApiClient.buscarIssuePorChave("KAN-15")).thenReturn(issueDeExemplo("KAN-15", "To Do", "KAN-5", null));
+        when(jiraApiClient.buscarIssuePorChave("KAN-5")).thenReturn(issueDeExemplo("KAN-5", "To Do", null, "Texto humano"));
+
+        LinhaCusto linha = service.registrarCusto("KAN-15",
+                new RegistrarCustoRequest("claude-opus-5", 1000, 1000, 1_000_000, 1000));
+
+        assertThat(linha.card()).isEqualTo("KAN-15");
+        assertThat(linha.ts()).isEqualTo("2026-08-08T13:04");
+        assertThat(linha.in()).isEqualTo(1_002_000);
+        assertThat(linha.out()).isEqualTo(1000);
+        verify(jiraApiClient).atualizarIssue(eq("KAN-5"), any());
+        verify(jiraApiClient, never()).atualizarIssue(eq("KAN-15"), any());
+    }
+
+    @Test
+    void deveCalcularUsdComAsQuatroTarifasEnaoComUmaSo() {
+        when(jiraApiClient.buscarIssuePorChave("KAN-5")).thenReturn(issueDeExemplo("KAN-5", "To Do", null, null));
+
+        LinhaCusto linha = service.registrarCusto("KAN-5",
+                new RegistrarCustoRequest("claude-opus-5", 1000, 1000, 1_000_000, 1000));
+
+        // 1000*5 + 1000*6,25 + 1000000*0,50 + 1000*25 = 536250 / 1e6
+        assertThat(linha.usd()).isEqualByComparingTo(new BigDecimal("0.5363"));
+        // Se cache_read fosse cobrado como input cheio daria 5.0363 — quase 10x. E a razao de o
+        // servico receber os quatro contadores separados em vez de um total ja somado.
+    }
+
+    @Test
+    void deveGravarNoProprioCardQuandoNaoTemPai() {
+        when(jiraApiClient.buscarIssuePorChave("KAN-3")).thenReturn(issueDeExemplo("KAN-3", "To Do", null, null));
+
+        service.registrarCusto("KAN-3", new RegistrarCustoRequest("claude-opus-5", 10, 0, 0, 10));
+
+        verify(jiraApiClient).atualizarIssue(eq("KAN-3"), any());
+    }
+
+    @Test
+    void deveRecusarModeloSemTarifaEnaoGravarNada() {
+        assertThatThrownBy(() -> service.registrarCusto("KAN-5",
+                new RegistrarCustoRequest("modelo-inventado", 10, 0, 0, 10)))
+                .isInstanceOf(ModeloDesconhecidoException.class);
+
+        verify(jiraApiClient, never()).atualizarIssue(anyString(), any());
+    }
+
+    @Test
+    void deveAcumularDuasExecucoesComoDuasLinhasSemPerderNenhuma() {
+        String descricaoComUmaLinha = "Texto humano\n\n" + LedgerDeCusto.ABERTURA
+                + "\n{\"ts\":\"2026-08-08T11:00\",\"card\":\"KAN-5\",\"in\":10,\"out\":5,\"usd\":0.01}\n"
+                + LedgerDeCusto.FECHAMENTO;
+        when(jiraApiClient.buscarIssuePorChave("KAN-5"))
+                .thenReturn(issueDeExemplo("KAN-5", "To Do", null, descricaoComUmaLinha));
+
+        service.registrarCusto("KAN-5", new RegistrarCustoRequest("claude-opus-5", 10, 0, 0, 10));
+
+        verify(jiraApiClient).atualizarIssue(eq("KAN-5"), argThat(req -> {
+            String texto = adfMapper.adfParaTexto(objectMapper.valueToTree(req.fields().description()));
+            LedgerDeCusto.Leitura leitura = ledger.ler(texto);
+            return leitura.linhas().size() == 2 && texto.contains("Texto humano");
+        }));
     }
 
     @Test

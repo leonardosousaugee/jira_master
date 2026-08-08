@@ -62,4 +62,26 @@ class AdfMapperTest {
         assertThat(adf.get("version")).isEqualTo(1);
         assertThat(adf.get("content")).isEqualTo(List.of());
     }
+
+    @Test
+    void deveMontarDocumentoComParagrafoEBlocoDeCodigo() {
+        Map<String, Object> doc = mapper.documento(List.of(
+                mapper.paragrafo("Texto humano"),
+                mapper.blocoDeCodigo("linha1\nlinha2")));
+
+        JsonNode node = objectMapper.valueToTree(doc);
+
+        assertThat(node.get("content").get(0).get("type").asText()).isEqualTo("paragraph");
+        assertThat(node.get("content").get(1).get("type").asText()).isEqualTo("codeBlock");
+        assertThat(mapper.adfParaTexto(node)).isEqualTo("Texto humano\nlinha1\nlinha2");
+    }
+
+    @Test
+    void deveFazerRoundTripDeLinhaEmBrancoNoTextoHumano() {
+        Map<String, Object> doc = mapper.documento(mapper.paragrafosDeTexto("a\n\nb"));
+
+        JsonNode node = objectMapper.valueToTree(doc);
+
+        assertThat(mapper.adfParaTexto(node)).isEqualTo("a\n\nb");
+    }
 }

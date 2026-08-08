@@ -40,7 +40,7 @@ class JiraCardControllerTest {
     @Test
     void deveCriarCardERetornar201() throws Exception {
         CardResponse resposta = new CardResponse("KAN-1", "Titulo", "Descricao", "To Do", "Medium", "Task", "KAN",
-                Instant.parse("2026-08-05T10:00:00Z"), Instant.parse("2026-08-05T10:00:00Z"));
+                Instant.parse("2026-08-05T10:00:00Z"), Instant.parse("2026-08-05T10:00:00Z"), null, java.util.List.of(), 0);
         when(service.criarCard(any())).thenReturn(resposta);
 
         mockMvc.perform(post("/api/cards")
@@ -63,7 +63,7 @@ class JiraCardControllerTest {
     @Test
     void deveBuscarCardPorIdERetornar200() throws Exception {
         CardResponse resposta = new CardResponse("KAN-1", "Titulo", "Descricao", "To Do", "Medium", "Task", "KAN",
-                Instant.parse("2026-08-05T10:00:00Z"), Instant.parse("2026-08-05T10:00:00Z"));
+                Instant.parse("2026-08-05T10:00:00Z"), Instant.parse("2026-08-05T10:00:00Z"), null, java.util.List.of(), 0);
         when(service.buscarCardPorId("KAN-1")).thenReturn(resposta);
 
         mockMvc.perform(get("/api/cards/KAN-1"))
