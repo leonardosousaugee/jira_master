@@ -1,4 +1,15 @@
 package com.juditecompany.jiramaster.client.dto;
 
-public record JiraNameRef(String name) {
+import com.fasterxml.jackson.annotation.JsonInclude;
+
+@JsonInclude(JsonInclude.Include.NON_NULL)
+public record JiraNameRef(String id, String name) {
+
+    public JiraNameRef(String name) {
+        this(null, name);
+    }
+
+    public static JiraNameRef porId(String id) {
+        return new JiraNameRef(id, null);
+    }
 }

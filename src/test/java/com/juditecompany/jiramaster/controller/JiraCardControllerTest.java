@@ -1,21 +1,26 @@
 package com.juditecompany.jiramaster.controller;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
+import com.juditecompany.jiramaster.dto.request.AlterarEtapaRequest;
 import com.juditecompany.jiramaster.dto.response.CardResponse;
 import com.juditecompany.jiramaster.exception.TransitionNotFoundException;
 import com.juditecompany.jiramaster.service.JiraCardService;
 import org.junit.jupiter.api.Test;
+import org.mockito.ArgumentCaptor;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.autoconfigure.web.servlet.WebMvcTest;
 import org.springframework.boot.test.mock.mockito.MockBean;
 import org.springframework.http.MediaType;
 import org.springframework.test.web.servlet.MockMvc;
 
+import java.nio.charset.StandardCharsets;
 import java.time.Instant;
 import java.util.List;
 
+import static org.assertj.core.api.Assertions.assertThat;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.eq;
+import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.*;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.*;
@@ -87,5 +92,31 @@ class JiraCardControllerTest {
                                 {"etapaDestino":"Bloqueado"}
                                 """))
                 .andExpect(status().isBadRequest());
+    }
+
+    @Test
+    void deveDecodificarCorpoUtf8AcentuadoQuandoContentTypeNaoTrazCharset() throws Exception {
+        mockMvc.perform(post("/api/cards/KAN-1/etapa")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"etapaDestino\":\"Concluído\"}".getBytes(StandardCharsets.UTF_8)))
+                .andExpect(status().isNoContent());
+
+        ArgumentCaptor<AlterarEtapaRequest> captor = ArgumentCaptor.forClass(AlterarEtapaRequest.class);
+        verify(service).alterarEtapaCard(eq("KAN-1"), captor.capture());
+        assertThat(captor.getValue().etapaDestino()).isEqualTo("Concluído");
+    }
+
+    @Test
+    void deveRetornar400ComACausaQuandoCorpoNaoForJsonLegivel() throws Exception {
+        byte[] corpoLatin1 = new byte[]{'{', '"', 'e', 't', 'a', 'p', 'a', 'D', 'e', 's', 't', 'i', 'n', 'o', '"', ':',
+                '"', 'C', 'o', 'n', 'c', 'l', 'u', (byte) 0xED, 'd', 'o', '"', '}'};
+
+        mockMvc.perform(post("/api/cards/KAN-1/etapa")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(corpoLatin1))
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.detail").value(org.hamcrest.Matchers.containsString("UTF-8")));
+
+        verify(service, org.mockito.Mockito.never()).alterarEtapaCard(eq("KAN-1"), any());
     }
 }

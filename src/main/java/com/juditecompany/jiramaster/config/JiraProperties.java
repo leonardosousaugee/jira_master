@@ -20,6 +20,21 @@ public class JiraProperties {
     @NotBlank
     private String defaultProjectKey;
 
+    /**
+     * Id do tipo de item usado para subtarefas. Opcional: em branco, o id e descoberto
+     * em runtime lendo os tipos do projeto. Serve de escape quando o projeto tem mais de
+     * um tipo de subtarefa e a descoberta escolhe o errado.
+     */
+    private String subtaskIssueTypeId;
+
+    public String getSubtaskIssueTypeId() {
+        return subtaskIssueTypeId;
+    }
+
+    public void setSubtaskIssueTypeId(String subtaskIssueTypeId) {
+        this.subtaskIssueTypeId = subtaskIssueTypeId;
+    }
+
     public String getBaseUrl() {
         return baseUrl;
     }

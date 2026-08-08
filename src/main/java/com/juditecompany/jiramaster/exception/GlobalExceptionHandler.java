@@ -4,6 +4,7 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ProblemDetail;
+import org.springframework.http.converter.HttpMessageNotReadableException;
 import org.springframework.validation.FieldError;
 import org.springframework.web.bind.MethodArgumentNotValidException;
 import org.springframework.web.bind.annotation.ExceptionHandler;
@@ -32,6 +33,24 @@ public class GlobalExceptionHandler {
     @ExceptionHandler(JiraApiException.class)
     public ProblemDetail handleJiraApiException(JiraApiException ex) {
         return ProblemDetail.forStatusAndDetail(HttpStatus.valueOf(ex.getStatus().value()), ex.getMessage());
+    }
+
+    @ExceptionHandler(SubtaskIssueTypeNotFoundException.class)
+    public ProblemDetail handleTipoDeSubtarefaNaoEncontrado(SubtaskIssueTypeNotFoundException ex) {
+        ProblemDetail problema = ProblemDetail.forStatusAndDetail(HttpStatus.UNPROCESSABLE_ENTITY, ex.getMessage());
+        problema.setProperty("tiposDisponiveis", ex.getTiposDisponiveis());
+        return problema;
+    }
+
+    /**
+     * Sem este handler qualquer corpo malformado cai no handler generico e vira um 500 mudo,
+     * escondendo a causa real (encoding errado, JSON quebrado, tipo incompativel).
+     */
+    @ExceptionHandler(HttpMessageNotReadableException.class)
+    public ProblemDetail handleCorpoIlegivel(HttpMessageNotReadableException ex) {
+        log.warn("Corpo da requisicao ilegivel: {}", ex.getMessage());
+        return ProblemDetail.forStatusAndDetail(HttpStatus.BAD_REQUEST,
+                "Corpo da requisicao ilegivel: " + ex.getMessage());
     }
 
     @ExceptionHandler(MethodArgumentNotValidException.class)

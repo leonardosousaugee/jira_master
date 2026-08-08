@@ -7,6 +7,7 @@ import com.juditecompany.jiramaster.dto.request.*;
 import com.juditecompany.jiramaster.dto.response.*;
 import com.juditecompany.jiramaster.exception.CardNotFoundException;
 import com.juditecompany.jiramaster.exception.JiraApiException;
+import com.juditecompany.jiramaster.exception.SubtaskIssueTypeNotFoundException;
 import com.juditecompany.jiramaster.exception.TransitionNotFoundException;
 import com.juditecompany.jiramaster.mapper.AdfMapper;
 import com.juditecompany.jiramaster.mapper.JiraCardMapper;
@@ -14,6 +15,8 @@ import org.springframework.http.HttpStatus;
 import org.springframework.stereotype.Service;
 
 import java.util.List;
+import java.util.Map;
+import java.util.concurrent.ConcurrentHashMap;
 
 @Service
 public class JiraCardServiceImpl implements JiraCardService {
@@ -22,6 +25,7 @@ public class JiraCardServiceImpl implements JiraCardService {
     private final JiraCardMapper cardMapper;
     private final AdfMapper adfMapper;
     private final JiraProperties jiraProperties;
+    private final Map<String, String> tipoDeSubtarefaPorProjeto = new ConcurrentHashMap<>();
 
     public JiraCardServiceImpl(JiraApiClient jiraApiClient, JiraCardMapper cardMapper,
                                 AdfMapper adfMapper, JiraProperties jiraProperties) {
@@ -92,13 +96,38 @@ public class JiraCardServiceImpl implements JiraCardService {
 
     @Override
     public CardResponse adicionarSubCard(String issueKeyPai, AdicionarSubCardRequest request) {
+        String projectKey = jiraProperties.getDefaultProjectKey();
         Object descricaoAdf = request.descricao() != null ? adfMapper.textoParaAdf(request.descricao()) : null;
-        var fields = new JiraIssueFields(new JiraFieldRef(jiraProperties.getDefaultProjectKey()),
-                request.titulo(), descricaoAdf, new JiraNameRef("Subtask"), new JiraFieldRef(issueKeyPai), null);
+        var fields = new JiraIssueFields(new JiraFieldRef(projectKey), request.titulo(), descricaoAdf,
+                JiraNameRef.porId(resolverTipoDeSubtarefaId(projectKey)), new JiraFieldRef(issueKeyPai), null);
 
         JiraCreatedIssueDto criado = jiraApiClient.criarIssue(new JiraIssueRequest(fields));
 
         return cardMapper.paraCardResponse(jiraApiClient.buscarIssuePorChave(criado.key()));
+    }
+
+    /**
+     * O nome do tipo e localizado ("Subtask" em ingles, "Subtarefa" em portugues) e o usuario
+     * pode renomear; o id nao muda. Por isso a subtarefa referencia o tipo por id, descoberto
+     * lendo os tipos do proprio projeto, com o id fixo em configuracao como escape.
+     */
+    private String resolverTipoDeSubtarefaId(String projectKey) {
+        String configurado = jiraProperties.getSubtaskIssueTypeId();
+        if (configurado != null && !configurado.isBlank()) {
+            return configurado;
+        }
+        return tipoDeSubtarefaPorProjeto.computeIfAbsent(projectKey, this::descobrirTipoDeSubtarefaId);
+    }
+
+    private String descobrirTipoDeSubtarefaId(String projectKey) {
+        List<JiraIssueTypeDto> tipos = jiraApiClient.buscarProjeto(projectKey).issueTypes();
+
+        return tipos.stream()
+                .filter(JiraIssueTypeDto::subtask)
+                .map(JiraIssueTypeDto::id)
+                .findFirst()
+                .orElseThrow(() -> new SubtaskIssueTypeNotFoundException(projectKey,
+                        tipos.stream().map(JiraIssueTypeDto::name).toList()));
     }
 
     @Override

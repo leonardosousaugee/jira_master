@@ -6,6 +6,7 @@ jira:
   email: ${JIRA_EMAIL}
   api-token: ${JIRA_API_TOKEN}
   default-project-key: ${JIRA_DEFAULT_PROJECT_KEY:KAN}
+  subtask-issue-type-id: ${JIRA_SUBTASK_ISSUE_TYPE_ID:}
 
 springdoc:
   swagger-ui:

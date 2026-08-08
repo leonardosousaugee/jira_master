@@ -21,6 +21,13 @@ public class JiraApiClient {
                 .body(JiraCreatedIssueDto.class);
     }
 
+    public JiraProjectDto buscarProjeto(String projectKey) {
+        return restClient.get()
+                .uri("/project/{projectKey}", projectKey)
+                .retrieve()
+                .body(JiraProjectDto.class);
+    }
+
     public JiraSearchResponseDto buscarIssues(String jql) {
         return restClient.get()
                 .uri(uriBuilder -> uriBuilder.path("/search/jql").queryParam("jql", jql)

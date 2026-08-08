@@ -3,6 +3,7 @@ package com.juditecompany.jiramaster.exception;
 import org.junit.jupiter.api.Test;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ProblemDetail;
+import org.springframework.http.converter.HttpMessageNotReadableException;
 import org.springframework.validation.BindingResult;
 import org.springframework.validation.FieldError;
 import org.springframework.web.bind.MethodArgumentNotValidException;
@@ -64,5 +65,28 @@ class GlobalExceptionHandlerTest {
         ProblemDetail problema = handler.handleErroGenerico(new RuntimeException("boom"));
 
         assertThat(problema.getStatus()).isEqualTo(500);
+    }
+
+    @Test
+    void deveRetornar400ComACausaQuandoCorpoForIlegivel() {
+        HttpMessageNotReadableException ex = new HttpMessageNotReadableException(
+                "JSON parse error: Invalid UTF-8 middle byte 0x64",
+                mock(org.springframework.http.HttpInputMessage.class));
+
+        ProblemDetail problema = handler.handleCorpoIlegivel(ex);
+
+        assertThat(problema.getStatus()).isEqualTo(400);
+        assertThat(problema.getDetail()).contains("Invalid UTF-8 middle byte 0x64");
+    }
+
+    @Test
+    void deveRetornar422ComOsTiposDisponiveisQuandoProjetoNaoTemSubtarefa() {
+        SubtaskIssueTypeNotFoundException ex =
+                new SubtaskIssueTypeNotFoundException("KAN", List.of("Epic", "Tarefa"));
+
+        ProblemDetail problema = handler.handleTipoDeSubtarefaNaoEncontrado(ex);
+
+        assertThat(problema.getStatus()).isEqualTo(422);
+        assertThat(problema.getProperties()).containsEntry("tiposDisponiveis", List.of("Epic", "Tarefa"));
     }
 }

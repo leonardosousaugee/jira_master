@@ -7,6 +7,7 @@ import com.juditecompany.jiramaster.dto.request.*;
 import com.juditecompany.jiramaster.dto.response.CardResponse;
 import com.juditecompany.jiramaster.exception.CardNotFoundException;
 import com.juditecompany.jiramaster.exception.JiraApiException;
+import com.juditecompany.jiramaster.exception.SubtaskIssueTypeNotFoundException;
 import com.juditecompany.jiramaster.exception.TransitionNotFoundException;
 import com.juditecompany.jiramaster.mapper.AdfMapper;
 import com.juditecompany.jiramaster.mapper.JiraCardMapper;
@@ -25,6 +26,8 @@ import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.argThat;
 import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.ArgumentMatchers.eq;
+import static org.mockito.Mockito.never;
+import static org.mockito.Mockito.times;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
@@ -46,15 +49,25 @@ class JiraCardServiceImplTest {
         return new JiraIssueDto("10001", key, fields);
     }
 
-    @BeforeEach
-    void setUp() {
+    private JiraProperties propriedadesDeTeste() {
         JiraProperties properties = new JiraProperties();
         properties.setBaseUrl("https://juditecompany.atlassian.net");
         properties.setEmail("leonardo.sousa@witzler-ultragaz.com.br");
         properties.setApiToken("token-de-teste");
         properties.setDefaultProjectKey("KAN");
+        return properties;
+    }
 
-        service = new JiraCardServiceImpl(jiraApiClient, cardMapper, adfMapper, properties);
+    private JiraProjectDto projetoComTipos() {
+        return new JiraProjectDto("10000", "KAN", List.of(
+                new JiraIssueTypeDto("10001", "Epic", false),
+                new JiraIssueTypeDto("10002", "Subtarefa", true),
+                new JiraIssueTypeDto("10003", "Tarefa", false)));
+    }
+
+    @BeforeEach
+    void setUp() {
+        service = new JiraCardServiceImpl(jiraApiClient, cardMapper, adfMapper, propriedadesDeTeste());
     }
 
     @Test
@@ -144,7 +157,8 @@ class JiraCardServiceImplTest {
     }
 
     @Test
-    void deveAdicionarSubCardComParentReferenciado() {
+    void deveAdicionarSubCardComParentReferenciadoETipoDescobertoNoProjeto() {
+        when(jiraApiClient.buscarProjeto("KAN")).thenReturn(projetoComTipos());
         when(jiraApiClient.criarIssue(any())).thenReturn(new JiraCreatedIssueDto("10002", "KAN-2"));
         when(jiraApiClient.buscarIssuePorChave("KAN-2")).thenReturn(issueDeExemplo("KAN-2", "To Do"));
 
@@ -152,7 +166,45 @@ class JiraCardServiceImplTest {
 
         verify(jiraApiClient).criarIssue(argThat(req ->
                 req.fields().parent() != null && req.fields().parent().key().equals("KAN-1")
-                        && req.fields().issuetype().name().equals("Subtask")));
+                        && req.fields().issuetype().id().equals("10002")
+                        && req.fields().issuetype().name() == null));
+    }
+
+    @Test
+    void deveDescobrirTipoDeSubtarefaUmaVezSoEReaproveitar() {
+        when(jiraApiClient.buscarProjeto("KAN")).thenReturn(projetoComTipos());
+        when(jiraApiClient.criarIssue(any())).thenReturn(new JiraCreatedIssueDto("10002", "KAN-2"));
+        when(jiraApiClient.buscarIssuePorChave("KAN-2")).thenReturn(issueDeExemplo("KAN-2", "To Do"));
+
+        service.adicionarSubCard("KAN-1", new AdicionarSubCardRequest("Uma", null));
+        service.adicionarSubCard("KAN-1", new AdicionarSubCardRequest("Outra", null));
+
+        verify(jiraApiClient, times(1)).buscarProjeto("KAN");
+    }
+
+    @Test
+    void devePreferirTipoDeSubtarefaConfiguradoSemConsultarOProjeto() {
+        JiraProperties properties = propriedadesDeTeste();
+        properties.setSubtaskIssueTypeId("99999");
+        service = new JiraCardServiceImpl(jiraApiClient, cardMapper, adfMapper, properties);
+        when(jiraApiClient.criarIssue(any())).thenReturn(new JiraCreatedIssueDto("10002", "KAN-2"));
+        when(jiraApiClient.buscarIssuePorChave("KAN-2")).thenReturn(issueDeExemplo("KAN-2", "To Do"));
+
+        service.adicionarSubCard("KAN-1", new AdicionarSubCardRequest("Subtarefa", null));
+
+        verify(jiraApiClient, never()).buscarProjeto(anyString());
+        verify(jiraApiClient).criarIssue(argThat(req -> req.fields().issuetype().id().equals("99999")));
+    }
+
+    @Test
+    void deveFalharQuandoProjetoNaoTemNenhumTipoDeSubtarefa() {
+        when(jiraApiClient.buscarProjeto("KAN")).thenReturn(new JiraProjectDto("10000", "KAN", List.of(
+                new JiraIssueTypeDto("10003", "Tarefa", false))));
+
+        assertThatThrownBy(() -> service.adicionarSubCard("KAN-1", new AdicionarSubCardRequest("Subtarefa", null)))
+                .isInstanceOf(SubtaskIssueTypeNotFoundException.class);
+
+        verify(jiraApiClient, never()).criarIssue(any());
     }
 
     @Test
