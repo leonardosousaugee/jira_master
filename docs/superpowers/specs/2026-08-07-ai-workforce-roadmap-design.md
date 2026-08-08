@@ -39,10 +39,8 @@ página que as expõe.
 | 8 | `espolios.md` opcional ao fim de cada rodada — agente sugere linhas para o próprio `TRAINING.md`/`CLAUDE.md` | Em aberto (pode ou não existir) |
 | 9 | Registro de agentes + portabilidade total (outro colaborador, ou o PC corporativo do Leonardo) | Planejado |
 
-Mapeamento de status → marcador na linha do tempo: **Concluído** (nenhuma frente ainda),
-**Quase lá** (frente 1), **Planejado** (frentes 2, 3, 4, 5, 6, 7, 9), **Em aberto** (frente 8).
-A ordem na página é a ordem numérica das frentes (1 → 9) — é uma linha do tempo, não colunas
-por status.
+Mapeamento de status → coluna do quadro: **Concluído** (nenhuma frente ainda), **Quase lá**
+(frente 1), **Planejado** (frentes 2, 3, 4, 5, 6, 7, 9), **Em aberto** (frente 8).
 
 ## Formato da página
 
@@ -75,35 +73,45 @@ deliberados — tratamento editorial, não utilitário. Referência de mood pedi
   confortável.
 - Números de fase e contadores: `font-variant-numeric: tabular-nums`.
 
-### Layout
+### Layout (revisão 2 — snapshots por sprint)
 
-1. **Hero** full-bleed, altura ~60vh. Título + subtítulo curto (a tese do projeto em uma frase).
-   Canvas ambiente ao fundo: nós conectados por linhas finas, pulsos ocasionais viajando entre
-   nós (metáfora de cards fluindo entre agentes) — decorativo, contido ao hero, para em
-   `prefers-reduced-motion`. Um spotlight radial acompanha o cursor sobre o hero (também
-   desativado em `prefers-reduced-motion`).
-2. **Faixa de status**: contadores rápidos (ex. "9 frentes · 1 quase lá · 7 planejadas ·
-   1 em aberto · atualizado em 07/08/2026").
-3. **Linha do tempo vertical**: uma trilha central com as 9 frentes em ordem (1 → 9), cada uma
-   um nó conectado ao próximo por uma linha. O marcador de cada nó reflete o status (cheio/glow
-   para concluído ou quase lá, vazio para planejado, tracejado para em aberto). Ao lado do nó,
-   número, título e uma linha de resumo; clique expande um painel inline com o detalhe completo
-   (a descrição da tabela acima). Em telas estreitas a trilha e os nós continuam verticais, sem
-   mudança de estrutura (já é a orientação natural para mobile).
-4. **Nota de rodapé**: o documento é vivo — mesmo link, atualizado conforme cada frente avança;
-   aponta que o acompanhamento também continua nesta conversa.
+Revisão pós-feedback: o usuário não quer o "retrato atual" sobrescrito a cada avanço — quer
+abas horizontais por sprint/data, cada uma congelada no momento em que foi criada, mostrando o
+quadro kanban **como estava** naquele sprint. O efeito ambiente também não pode empurrar o
+conteúdo para baixo — vira pano de fundo fixo da página inteira, não uma seção própria.
+
+1. **Cabeçalho compacto**: título + subtítulo curto, sem banda cheia de 60vh — conteúdo visível
+   sem rolar.
+2. **Fundo ambiente (fixo, atrás de tudo)**: canvas full-viewport com nós conectados por linhas
+   finas e pulsos leves, mais um spotlight radial que segue o cursor pela página inteira —
+   ambos `position: fixed`, `z-index` abaixo do conteúdo, pausados em `prefers-reduced-motion`.
+3. **Abas de sprint** (`.sprint-tabs`): uma aba por snapshot, rotulada com a data/sprint. Clicar
+   troca qual snapshot é renderizado abaixo. Snapshots vivem em um array de dados no próprio
+   arquivo (`SNAPSHOTS`) — **um snapshot já publicado nunca é editado**; um novo sprint sempre
+   entra como um novo elemento no fim do array, preservando "como estava" nas abas anteriores.
+4. **Quadro kanban do snapshot ativo**: 4 colunas (Concluído / Quase lá / Planejado / Em
+   aberto), renderizadas dinamicamente a partir dos dados do snapshot selecionado — não é mais
+   markup estático. Clique no card expande o detalhe inline, igual antes.
+5. **Nota de rodapé**: reforça que cada aba é uma fotografia congelada, e que o acompanhamento
+   também continua nesta conversa.
 
 ### Fora de escopo deste spec
 
 - O desenho de qualquer uma das 9 frentes em si (guardrails, catálogo de ambientes, etc.) —
   cada uma recebe seu próprio spec quando for a vez dela.
 - Qualquer alteração no `jira-master-service` ou no `company_template`.
-- Autenticação, backend, ou persistência — a página é estática; atualizações futuras são feitas
-  editando o arquivo e republicando no mesmo artifact.
+- Uma view de "diff" entre dois snapshots — hoje só existe 1 sprint; a comparação visual entre
+  abas fica para quando houver pelo menos 2.
+- Autenticação, backend, ou persistência real — os snapshots vivem embutidos no próprio HTML;
+  um novo sprint é adicionado editando o array `SNAPSHOTS` e republicando no mesmo artifact.
 
 ## Critério de pronto
 
 - Página publicada como artifact, tema escuro, sem paleta roxa.
-- As 9 frentes presentes, em ordem, cada uma com o status e resumo da tabela acima.
-- Efeitos (canvas ambiente + spotlight) funcionam e respeitam `prefers-reduced-motion`.
-- Responsiva: a trilha vertical não gera scroll horizontal na página em telas estreitas.
+- Conteúdo visível sem rolar; o efeito ambiente não ocupa uma seção própria.
+- Pelo menos uma aba de sprint presente; trocar de aba troca o quadro kanban exibido.
+- As 9 frentes presentes no snapshot ativo, na coluna de status correta, com o resumo da
+  tabela acima.
+- Efeitos (canvas ambiente + spotlight) cobrem a página inteira e respeitam
+  `prefers-reduced-motion`.
+- Responsiva: sem scroll horizontal na página em telas estreitas.
