@@ -8,8 +8,12 @@ import com.juditecompany.jiramaster.config.JiraProperties;
 import com.juditecompany.jiramaster.config.TarifaProperties;
 import com.juditecompany.jiramaster.dto.request.*;
 import com.juditecompany.jiramaster.dto.response.CardResponse;
+import com.juditecompany.jiramaster.dto.response.CardResumoResponse;
+import com.juditecompany.jiramaster.dto.response.CustoArvoreResponse;
+import com.juditecompany.jiramaster.dto.response.ResultadoHoldResponse;
 import com.juditecompany.jiramaster.exception.CardNotFoundException;
 import com.juditecompany.jiramaster.exception.JiraApiException;
+import com.juditecompany.jiramaster.exception.LinhaDeCustoNaoEncontradaException;
 import com.juditecompany.jiramaster.exception.ModeloDesconhecidoException;
 import com.juditecompany.jiramaster.exception.SubtaskIssueTypeNotFoundException;
 import com.juditecompany.jiramaster.exception.TransitionNotFoundException;
@@ -19,6 +23,7 @@ import com.juditecompany.jiramaster.mapper.AdfMapper;
 import com.juditecompany.jiramaster.mapper.JiraCardMapper;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
+import org.mockito.InOrder;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
 import org.junit.jupiter.api.extension.ExtendWith;
@@ -37,6 +42,7 @@ import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.argThat;
 import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.ArgumentMatchers.eq;
+import static org.mockito.Mockito.inOrder;
 import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.times;
 import static org.mockito.Mockito.verify;
@@ -67,9 +73,23 @@ class JiraCardServiceImplTest {
         var fields = new JiraIssueResponseFields(
                 "Titulo", descricaoAdf, new JiraStatusDto(statusNome), new JiraNameRef("Medium"),
                 new JiraNameRef("Task"), new JiraFieldRef("KAN"),
-                chavePai == null ? null : new JiraFieldRef(chavePai),
+                chavePai == null ? null : new JiraFieldRef(chavePai), null,
                 "2026-08-05T10:00:00.000+0000", "2026-08-05T10:00:00.000+0000");
         return new JiraIssueDto("10001", key, fields);
+    }
+
+    private JiraIssueDto issueComFilhos(String key, String descricao, List<JiraIssueDto> filhos) {
+        JsonNode descricaoAdf = descricao == null ? null : objectMapper.valueToTree(adfMapper.textoParaAdf(descricao));
+        var fields = new JiraIssueResponseFields(
+                "Titulo", descricaoAdf, new JiraStatusDto("Em andamento"), new JiraNameRef("Medium"),
+                new JiraNameRef("Task"), new JiraFieldRef("KAN"), null, filhos,
+                "2026-08-05T10:00:00.000+0000", "2026-08-05T10:00:00.000+0000");
+        return new JiraIssueDto("10001", key, fields);
+    }
+
+    private String blocoCom(String... linhas) {
+        return "Texto humano\n\n" + LedgerDeCusto.ABERTURA + "\n"
+                + String.join("\n", linhas) + "\n" + LedgerDeCusto.FECHAMENTO;
     }
 
     private TarifaProperties tarifasDeTeste() {
@@ -300,6 +320,178 @@ class JiraCardServiceImplTest {
             LedgerDeCusto.Leitura leitura = ledger.ler(texto);
             return leitura.linhas().size() == 2 && texto.contains("Texto humano");
         }));
+    }
+
+    @Test
+    void deveListarSubCardsDoPai() {
+        when(jiraApiClient.buscarIssuePorChave("KAN-5")).thenReturn(issueComFilhos("KAN-5", null,
+                List.of(issueDeExemplo("KAN-17", "A fazer"), issueDeExemplo("KAN-18", "Concluído"))));
+
+        var resultado = service.listarSubCards("KAN-5");
+
+        assertThat(resultado).extracting(CardResumoResponse::issueKey).containsExactly("KAN-17", "KAN-18");
+    }
+
+    @Test
+    void deveDevolverListaVaziaQuandoCardNaoTemSubtarefas() {
+        when(jiraApiClient.buscarIssuePorChave("KAN-9")).thenReturn(issueDeExemplo("KAN-9", "A fazer"));
+
+        assertThat(service.listarSubCards("KAN-9")).isEmpty();
+    }
+
+    @Test
+    void deveAgruparCustoPorCardESomarSemGravarTotal() {
+        String descricao = blocoCom(
+                "{\"ts\":\"2026-08-08T10:00\",\"card\":\"KAN-17\",\"in\":100,\"out\":10,\"usd\":1.00}",
+                "{\"ts\":\"2026-08-08T11:00\",\"card\":\"KAN-17\",\"in\":100,\"out\":10,\"usd\":2.00}",
+                "{\"ts\":\"2026-08-08T12:00\",\"card\":\"KAN-5\",\"in\":100,\"out\":10,\"usd\":0.50}");
+        when(jiraApiClient.buscarIssuePorChave("KAN-5")).thenReturn(issueComFilhos("KAN-5", descricao,
+                List.of(issueDeExemplo("KAN-17", "A fazer"), issueDeExemplo("KAN-18", "A fazer"))));
+
+        CustoArvoreResponse resultado = service.lerCustoDaArvore("KAN-5");
+
+        assertThat(resultado.custoTotal()).isEqualByComparingTo(new BigDecimal("3.50"));
+        assertThat(resultado.custoProprio()).isEqualByComparingTo(new BigDecimal("0.50"));
+        assertThat(resultado.linhasDescartadas()).isZero();
+        assertThat(resultado.porCard()).extracting(CustoArvoreResponse.CustoPorCard::issueKey)
+                .containsExactlyInAnyOrder("KAN-17", "KAN-5");
+        // KAN-18 nao entra como zero: nao medido e zero sao afirmacoes diferentes.
+        assertThat(resultado.filhosSemCusto()).containsExactly("KAN-18");
+        verify(jiraApiClient, never()).atualizarIssue(anyString(), any());
+    }
+
+    @Test
+    void deveDevolverCustoNuloEnaoZeroQuandoArvoreNuncaFoiMedida() {
+        when(jiraApiClient.buscarIssuePorChave("KAN-5")).thenReturn(issueComFilhos("KAN-5", "So texto humano",
+                List.of(issueDeExemplo("KAN-17", "A fazer"))));
+
+        CustoArvoreResponse resultado = service.lerCustoDaArvore("KAN-5");
+
+        assertThat(resultado.custoTotal()).isNull();
+        assertThat(resultado.custoProprio()).isNull();
+        assertThat(resultado.filhosSemCusto()).containsExactly("KAN-17");
+    }
+
+    @Test
+    void deveDevolverZeroQuandoAsLinhasExistemMasSeAnulam() {
+        String descricao = blocoCom(
+                "{\"ts\":\"2026-08-08T10:00\",\"card\":\"KAN-17\",\"in\":100,\"out\":10,\"usd\":1.00}",
+                "{\"ts\":\"2026-08-08T14:00\",\"card\":\"KAN-17\",\"in\":-100,\"out\":-10,\"usd\":-1.00,"
+                        + "\"estorna\":\"2026-08-08T10:00|KAN-17\"}");
+        when(jiraApiClient.buscarIssuePorChave("KAN-5")).thenReturn(issueComFilhos("KAN-5", descricao, List.of()));
+
+        CustoArvoreResponse resultado = service.lerCustoDaArvore("KAN-5");
+
+        // Medido e anulado vale zero; nunca medido vale nulo. Sao afirmacoes diferentes.
+        assertThat(resultado.custoTotal()).isEqualByComparingTo(BigDecimal.ZERO);
+        assertThat(resultado.custoTotal()).isNotNull();
+    }
+
+    @Test
+    void deveEstornarLinhaComValoresNegativosEmVezDeApagar() {
+        String descricao = blocoCom(
+                "{\"ts\":\"2026-08-08T10:00\",\"card\":\"KAN-17\",\"in\":100,\"out\":10,\"usd\":1.00}");
+        when(jiraApiClient.buscarIssuePorChave("KAN-5")).thenReturn(issueComFilhos("KAN-5", descricao, List.of()));
+
+        LinhaCusto estorno = service.estornarCusto("KAN-5",
+                new EstornarCustoRequest("2026-08-08T10:00", "KAN-17", "custo de teste"));
+
+        assertThat(estorno.usd()).isEqualByComparingTo(new BigDecimal("-1.00"));
+        assertThat(estorno.in()).isEqualTo(-100);
+        assertThat(estorno.estorna()).isEqualTo("2026-08-08T10:00|KAN-17");
+        verify(jiraApiClient).atualizarIssue(eq("KAN-5"), argThat(req -> {
+            String texto = adfMapper.adfParaTexto(objectMapper.valueToTree(req.fields().description()));
+            LedgerDeCusto.Leitura leitura = ledger.ler(texto);
+            // As duas linhas ficam: a original permanece para auditoria, o total volta a zero.
+            return leitura.linhas().size() == 2 && leitura.total().compareTo(BigDecimal.ZERO) == 0;
+        }));
+    }
+
+    @Test
+    void deveRecusarEstornoDeLinhaInexistente() {
+        when(jiraApiClient.buscarIssuePorChave("KAN-5")).thenReturn(issueComFilhos("KAN-5", blocoCom(
+                "{\"ts\":\"2026-08-08T10:00\",\"card\":\"KAN-17\",\"in\":100,\"out\":10,\"usd\":1.00}"), List.of()));
+
+        assertThatThrownBy(() -> service.estornarCusto("KAN-5",
+                new EstornarCustoRequest("2026-08-08T23:59", "KAN-17", null)))
+                .isInstanceOf(LinhaDeCustoNaoEncontradaException.class);
+    }
+
+    @Test
+    void deveRecusarEstornoEmDuplicidade() {
+        String descricao = blocoCom(
+                "{\"ts\":\"2026-08-08T10:00\",\"card\":\"KAN-17\",\"in\":100,\"out\":10,\"usd\":1.00}",
+                "{\"ts\":\"2026-08-08T14:00\",\"card\":\"KAN-17\",\"in\":-100,\"out\":-10,\"usd\":-1.00,"
+                        + "\"estorna\":\"2026-08-08T10:00|KAN-17\"}");
+        when(jiraApiClient.buscarIssuePorChave("KAN-5")).thenReturn(issueComFilhos("KAN-5", descricao, List.of()));
+
+        assertThatThrownBy(() -> service.estornarCusto("KAN-5",
+                new EstornarCustoRequest("2026-08-08T10:00", "KAN-17", null)))
+                .isInstanceOf(LinhaDeCustoNaoEncontradaException.class);
+        verify(jiraApiClient, never()).atualizarIssue(anyString(), any());
+    }
+
+    @Test
+    void deveMoverPaiAntesDosFilhosParaHold() {
+        when(jiraApiClient.buscarIssuePorChave("KAN-5")).thenReturn(issueComFilhos("KAN-5", null,
+                List.of(issueDeExemplo("KAN-17", "A fazer"))));
+        when(jiraApiClient.buscarIssuePorChave("KAN-17")).thenReturn(issueDeExemplo("KAN-17", "A fazer"));
+        when(jiraApiClient.buscarTransicoes(anyString())).thenReturn(new JiraTransitionsResponseDto(
+                List.of(new JiraTransitionDto("41", "HOLD", new JiraTransitionToDto("HOLD")))));
+
+        ResultadoHoldResponse resultado = service.moverArvoreParaHold("KAN-5");
+
+        assertThat(resultado.resultados()).extracting(ResultadoHoldResponse.CardMovido::issueKey)
+                .containsExactly("KAN-5", "KAN-17");
+        assertThat(resultado.resultados()).allMatch(ResultadoHoldResponse.CardMovido::movido);
+        InOrder ordem = inOrder(jiraApiClient);
+        ordem.verify(jiraApiClient).executarTransicao("KAN-5", "41");
+        ordem.verify(jiraApiClient).executarTransicao("KAN-17", "41");
+    }
+
+    @Test
+    void deveTratarCardJaEmHoldComoSucessoSemTransicionarDeNovo() {
+        when(jiraApiClient.buscarIssuePorChave("KAN-5")).thenReturn(issueComFilhos("KAN-5", null, List.of()));
+        when(jiraApiClient.buscarIssuePorChave("KAN-5"))
+                .thenReturn(new JiraIssueDto("1", "KAN-5", new JiraIssueResponseFields(
+                        "Titulo", null, new JiraStatusDto("HOLD"), null, new JiraNameRef("Task"),
+                        new JiraFieldRef("KAN"), null, List.of(), "2026-08-05T10:00:00.000+0000",
+                        "2026-08-05T10:00:00.000+0000")));
+
+        ResultadoHoldResponse resultado = service.moverArvoreParaHold("KAN-5");
+
+        assertThat(resultado.resultados().get(0).movido()).isTrue();
+        assertThat(resultado.resultados().get(0).observacao()).contains("ja estava em HOLD");
+        verify(jiraApiClient, never()).executarTransicao(anyString(), anyString());
+    }
+
+    @Test
+    void deveAceitarBloqueadoComoSinonimoDeHold() {
+        when(jiraApiClient.buscarIssuePorChave("KAN-5")).thenReturn(issueComFilhos("KAN-5", null, List.of()));
+        when(jiraApiClient.buscarTransicoes("KAN-5")).thenReturn(new JiraTransitionsResponseDto(
+                List.of(new JiraTransitionDto("41", "Bloquear", new JiraTransitionToDto("BLOQUEADO")))));
+
+        ResultadoHoldResponse resultado = service.moverArvoreParaHold("KAN-5");
+
+        assertThat(resultado.resultados().get(0).movido()).isTrue();
+        verify(jiraApiClient).executarTransicao("KAN-5", "41");
+    }
+
+    @Test
+    void deveReportarFalhaParcialSemDerrubarORestoDaArvore() {
+        when(jiraApiClient.buscarIssuePorChave("KAN-5")).thenReturn(issueComFilhos("KAN-5", null,
+                List.of(issueDeExemplo("KAN-17", "A fazer"))));
+        when(jiraApiClient.buscarIssuePorChave("KAN-17")).thenReturn(issueDeExemplo("KAN-17", "Concluído"));
+        when(jiraApiClient.buscarTransicoes("KAN-5")).thenReturn(new JiraTransitionsResponseDto(
+                List.of(new JiraTransitionDto("41", "HOLD", new JiraTransitionToDto("HOLD")))));
+        when(jiraApiClient.buscarTransicoes("KAN-17")).thenReturn(new JiraTransitionsResponseDto(
+                List.of(new JiraTransitionDto("11", "Reabrir", new JiraTransitionToDto("A fazer")))));
+
+        ResultadoHoldResponse resultado = service.moverArvoreParaHold("KAN-5");
+
+        assertThat(resultado.resultados().get(0).movido()).isTrue();
+        assertThat(resultado.resultados().get(1).movido()).isFalse();
+        assertThat(resultado.resultados().get(1).observacao()).contains("nenhuma transicao para HOLD");
     }
 
     @Test

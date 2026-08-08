@@ -12,6 +12,7 @@ public record JiraIssueResponseFields(
         JiraNameRef issuetype,
         JiraFieldRef project,
         JiraFieldRef parent,
+        java.util.List<JiraIssueDto> subtasks,
         String created,
         String updated
 ) {

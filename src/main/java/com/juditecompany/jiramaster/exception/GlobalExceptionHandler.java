@@ -35,6 +35,11 @@ public class GlobalExceptionHandler {
         return ProblemDetail.forStatusAndDetail(HttpStatus.valueOf(ex.getStatus().value()), ex.getMessage());
     }
 
+    @ExceptionHandler(LinhaDeCustoNaoEncontradaException.class)
+    public ProblemDetail handleLinhaDeCustoNaoEncontrada(LinhaDeCustoNaoEncontradaException ex) {
+        return ProblemDetail.forStatusAndDetail(HttpStatus.NOT_FOUND, ex.getMessage());
+    }
+
     @ExceptionHandler(ModeloDesconhecidoException.class)
     public ProblemDetail handleModeloDesconhecido(ModeloDesconhecidoException ex) {
         ProblemDetail problema = ProblemDetail.forStatusAndDetail(HttpStatus.UNPROCESSABLE_ENTITY, ex.getMessage());

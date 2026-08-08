@@ -8,6 +8,7 @@ import com.juditecompany.jiramaster.dto.request.*;
 import com.juditecompany.jiramaster.dto.response.*;
 import com.juditecompany.jiramaster.exception.CardNotFoundException;
 import com.juditecompany.jiramaster.exception.JiraApiException;
+import com.juditecompany.jiramaster.exception.LinhaDeCustoNaoEncontradaException;
 import com.juditecompany.jiramaster.exception.ModeloDesconhecidoException;
 import com.juditecompany.jiramaster.exception.SubtaskIssueTypeNotFoundException;
 import com.juditecompany.jiramaster.exception.TransitionNotFoundException;
@@ -25,6 +26,10 @@ import java.time.LocalDateTime;
 import java.time.format.DateTimeFormatter;
 import java.time.temporal.ChronoUnit;
 import java.util.ArrayList;
+import java.util.LinkedHashMap;
+import java.util.Locale;
+import java.util.Set;
+import java.util.stream.Collectors;
 import java.util.List;
 import java.util.Map;
 import java.util.concurrent.ConcurrentHashMap;
@@ -45,6 +50,9 @@ public class JiraCardServiceImpl implements JiraCardService {
 
     private static final BigDecimal POR_MILHAO = BigDecimal.valueOf(1_000_000);
     private static final DateTimeFormatter FORMATO_TS = DateTimeFormatter.ofPattern("yyyy-MM-dd'T'HH:mm");
+    // BLOQUEADO e HOLD sao o mesmo estado. O fluxo do KAN so tem HOLD; os outros nomes existem
+    // para o servico funcionar em board que chame a mesma etapa de outro jeito.
+    private static final Set<String> NOMES_DE_HOLD = Set.of("HOLD", "BLOQUEADO", "BLOCKED", "BLOCK");
 
     public JiraCardServiceImpl(JiraApiClient jiraApiClient, JiraCardMapper cardMapper,
                                 AdfMapper adfMapper, JiraProperties jiraProperties,
@@ -139,6 +147,154 @@ public class JiraCardServiceImpl implements JiraCardService {
             lock.unlock();
         }
         return linha;
+    }
+
+    @Override
+    public List<CardResumoResponse> listarSubCards(String issueKey) {
+        JiraIssueDto card = buscarIssueOuLancarNaoEncontrado(issueKey);
+        List<JiraIssueDto> filhos = card.fields().subtasks();
+        if (filhos == null) {
+            return List.of();
+        }
+        return filhos.stream().map(cardMapper::paraCardResumoResponse).toList();
+    }
+
+    @Override
+    public CustoArvoreResponse lerCustoDaArvore(String issueKey) {
+        JiraIssueDto card = buscarIssueOuLancarNaoEncontrado(issueKey);
+        JiraFieldRef pai = card.fields().parent();
+
+        // O bloco vive no card pai, entao a arvore de uma subtarefa e ela mesma: le-se o bloco do
+        // pai e filtra-se pelas linhas dela.
+        JiraIssueDto portador = pai != null ? buscarIssueOuLancarNaoEncontrado(pai.key()) : card;
+        LedgerDeCusto.Leitura leitura = ledger.ler(adfMapper.adfParaTexto(portador.fields().description()));
+
+        List<LinhaCusto> relevantes = pai != null
+                ? leitura.linhas().stream().filter(linha -> issueKey.equals(linha.card())).toList()
+                : leitura.linhas();
+
+        Map<String, List<LinhaCusto>> porChave = relevantes.stream()
+                .collect(Collectors.groupingBy(LinhaCusto::card, LinkedHashMap::new, Collectors.toList()));
+
+        List<CustoArvoreResponse.CustoPorCard> porCard = porChave.entrySet().stream()
+                .map(entrada -> new CustoArvoreResponse.CustoPorCard(entrada.getKey(),
+                        somar(entrada.getValue()), entrada.getValue().size()))
+                .toList();
+
+        List<String> semCusto = pai != null ? List.of() : chavesDosFilhos(card).stream()
+                .filter(chave -> !porChave.containsKey(chave))
+                .toList();
+
+        return new CustoArvoreResponse(issueKey,
+                somarOuNulo(porChave.getOrDefault(issueKey, List.of())),
+                porCard,
+                somarOuNulo(relevantes),
+                semCusto,
+                leitura.linhasDescartadas());
+    }
+
+    /**
+     * Sem nenhuma linha o valor e nulo, nao zero. Um card medido cujas linhas se anulam vale zero;
+     * um card nunca medido nao vale nada — e tratar os dois como iguais faria o total mentir para
+     * baixo justamente no numero que autoriza continuar gastando.
+     */
+    private BigDecimal somarOuNulo(List<LinhaCusto> linhas) {
+        return linhas.isEmpty() ? null : somar(linhas);
+    }
+
+    private List<String> chavesDosFilhos(JiraIssueDto card) {
+        List<JiraIssueDto> filhos = card.fields().subtasks();
+        return filhos == null ? List.of() : filhos.stream().map(JiraIssueDto::key).toList();
+    }
+
+    private BigDecimal somar(List<LinhaCusto> linhas) {
+        return linhas.stream().map(LinhaCusto::usd).reduce(BigDecimal.ZERO, BigDecimal::add);
+    }
+
+    @Override
+    public LinhaCusto estornarCusto(String issueKey, EstornarCustoRequest request) {
+        String chaveAlvo = resolverPortadorDoBloco(issueKey);
+
+        ReentrantLock lock = locksPorCard.computeIfAbsent(chaveAlvo, chave -> new ReentrantLock());
+        lock.lock();
+        try {
+            String atual = adfMapper.adfParaTexto(
+                    buscarIssueOuLancarNaoEncontrado(chaveAlvo).fields().description());
+            LedgerDeCusto.Leitura leitura = ledger.ler(atual);
+
+            LinhaCusto original = leitura.linhas().stream()
+                    .filter(linha -> !linha.ehEstorno()
+                            && linha.ts().equals(request.ts()) && linha.card().equals(request.card()))
+                    .findFirst()
+                    .orElseThrow(() -> new LinhaDeCustoNaoEncontradaException(request.ts(), request.card(), chaveAlvo));
+
+            String referencia = original.ts() + "|" + original.card();
+            boolean jaEstornada = leitura.linhas().stream()
+                    .anyMatch(linha -> referencia.equals(linha.estorna()));
+            if (jaEstornada) {
+                throw new LinhaDeCustoNaoEncontradaException(request.ts(), request.card(),
+                        chaveAlvo + " (a linha ja foi estornada)");
+            }
+
+            var estorno = new LinhaCusto(
+                    LocalDateTime.now(relogio).truncatedTo(ChronoUnit.MINUTES).format(FORMATO_TS),
+                    original.card(), -original.in(), -original.out(), original.usd().negate(), referencia);
+
+            atualizarIssueOuLancarNaoEncontrado(chaveAlvo, new JiraIssueFields(null, null,
+                    descricaoParaAdf(ledger.acrescentar(atual, estorno)), null, null, null));
+            return estorno;
+        } finally {
+            lock.unlock();
+        }
+    }
+
+    private String resolverPortadorDoBloco(String issueKey) {
+        JiraFieldRef pai = buscarIssueOuLancarNaoEncontrado(issueKey).fields().parent();
+        return pai != null ? pai.key() : issueKey;
+    }
+
+    /**
+     * Pai primeiro, filhos depois: o pai em HOLD e a flag que o health check entre blocos le, entao
+     * fecha-se a porta de entrada antes de sair fechando as janelas. Na ordem inversa existe uma
+     * janela em que os filhos ja pararam e o pai ainda aceita trabalho novo.
+     */
+    @Override
+    public ResultadoHoldResponse moverArvoreParaHold(String issueKey) {
+        JiraIssueDto card = buscarIssueOuLancarNaoEncontrado(issueKey);
+
+        List<ResultadoHoldResponse.CardMovido> resultados = new ArrayList<>();
+        resultados.add(moverParaHold(issueKey));
+        for (String filho : chavesDosFilhos(card)) {
+            resultados.add(moverParaHold(filho));
+        }
+        return new ResultadoHoldResponse(List.copyOf(resultados));
+    }
+
+    private ResultadoHoldResponse.CardMovido moverParaHold(String issueKey) {
+        try {
+            JiraIssueDto card = buscarIssueOuLancarNaoEncontrado(issueKey);
+            if (ehHold(card.fields().status().name())) {
+                return new ResultadoHoldResponse.CardMovido(issueKey, true, "ja estava em HOLD");
+            }
+
+            return jiraApiClient.buscarTransicoes(issueKey).transitions().stream()
+                    .filter(transicao -> ehHold(transicao.to().name()))
+                    .findFirst()
+                    .map(transicao -> {
+                        jiraApiClient.executarTransicao(issueKey, transicao.id());
+                        return new ResultadoHoldResponse.CardMovido(issueKey, true, null);
+                    })
+                    .orElseGet(() -> new ResultadoHoldResponse.CardMovido(issueKey, false,
+                            "nenhuma transicao para HOLD a partir de \"" + card.fields().status().name() + "\""));
+        } catch (RuntimeException ex) {
+            // Kill switch nao pode falhar inteiro por causa de um card: reporta e segue.
+            return new ResultadoHoldResponse.CardMovido(issueKey, false, ex.getMessage());
+        }
+    }
+
+    /** BLOQUEADO e HOLD sao o mesmo estado; o fluxo do KAN so tem HOLD, os demais sao sinonimos. */
+    private boolean ehHold(String nomeEtapa) {
+        return nomeEtapa != null && NOMES_DE_HOLD.contains(nomeEtapa.trim().toUpperCase(Locale.ROOT));
     }
 
     private BigDecimal calcularUsd(RegistrarCustoRequest request, TarifaProperties.Tarifa tarifa) {

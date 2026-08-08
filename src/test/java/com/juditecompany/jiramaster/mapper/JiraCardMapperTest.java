@@ -24,7 +24,7 @@ class JiraCardMapperTest {
                 """);
         var fields = new JiraIssueResponseFields(
                 "Titulo", descricao, new JiraStatusDto("To Do"), new JiraNameRef("Medium"),
-                new JiraNameRef("Task"), new JiraFieldRef("KAN"), null,
+                new JiraNameRef("Task"), new JiraFieldRef("KAN"), null, null,
                 "2026-08-05T10:00:00.000+0000", "2026-08-05T11:00:00.000+0000");
         var issue = new JiraIssueDto("10001", "KAN-1", fields);
 

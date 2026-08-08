@@ -70,6 +70,27 @@ public class JiraCardController {
         return ResponseEntity.noContent().build();
     }
 
+    @GetMapping("/{issueKey}/subcards")
+    public ResponseEntity<List<CardResumoResponse>> listarSubCards(@PathVariable String issueKey) {
+        return ResponseEntity.ok(service.listarSubCards(issueKey));
+    }
+
+    @GetMapping("/{issueKey}/custo")
+    public ResponseEntity<CustoArvoreResponse> lerCustoDaArvore(@PathVariable String issueKey) {
+        return ResponseEntity.ok(service.lerCustoDaArvore(issueKey));
+    }
+
+    @PostMapping("/{issueKey}/custos/estornos")
+    public ResponseEntity<LinhaCusto> estornarCusto(@PathVariable String issueKey,
+                                                      @Valid @RequestBody EstornarCustoRequest request) {
+        return ResponseEntity.status(HttpStatus.CREATED).body(service.estornarCusto(issueKey, request));
+    }
+
+    @PostMapping("/{issueKey}/hold")
+    public ResponseEntity<ResultadoHoldResponse> moverArvoreParaHold(@PathVariable String issueKey) {
+        return ResponseEntity.ok(service.moverArvoreParaHold(issueKey));
+    }
+
     @PostMapping("/{issueKey}/custos")
     public ResponseEntity<LinhaCusto> registrarCusto(@PathVariable String issueKey,
                                                        @Valid @RequestBody RegistrarCustoRequest request) {
