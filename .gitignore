@@ -1,7 +1,24 @@
+# Maven
 target/
+*.class
+*.jar
+*.war
+
+# Environment / secrets
 .env
+
+# IDE
 *.iml
 .idea/
 .vscode/
-*.class
+
+# Git worktrees
 .worktrees/
+
+# Logs and test reports
+*.log
+TEST*.xml
+
+# OS
+.DS_Store
+Thumbs.db
