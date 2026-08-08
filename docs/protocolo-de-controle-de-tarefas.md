@@ -99,11 +99,26 @@ certa". Se os testes falharam, diga com a saída; se um passo foi pulado, diga q
 
 ## Parar tudo — HOLD
 
-Mover o card **pai** para `HOLD` é o kill switch da árvore inteira. `HOLD` é etapa nativa do fluxo do
-board `KAN` (transição id `41`), não convenção inventada.
+**`BLOQUEADO` e `HOLD` são o mesmo estado.** Não existem dois conceitos: um mecanismo, um
+vocabulário. O fluxo do `KAN` tem só `HOLD` (transição id `41`); `BLOQUEADO`, `BLOCKED` e `BLOCK` são
+aceitos como sinônimos pelo serviço, para funcionar em board que nomeie a etapa de outro jeito.
+Decisão registrada em `docs/superpowers/specs/2026-08-08-hold-e-bloqueado-sao-o-mesmo-estado-design.md`.
+
+Por que parou é **motivo, não estado** — vai no comentário do card, que é onde motivo já mora.
+
+Uma chamada para a árvore inteira:
+
+```
+POST /api/cards/{issueKeyPai}/hold   ->  200 com o resultado por card
+```
 
 Pai primeiro, filhos depois. O pai em HOLD é a flag que o health check lê; na ordem inversa existe
 uma janela em que os filhos já pararam e o pai ainda aceita trabalho novo.
+
+É idempotente: card já em HOLD volta como sucesso, com a observação. Falha parcial é **reportada, não
+engolida** — a resposta diz quais moveram e quais não, com o motivo, e não há rollback. Este endpoint
+precisa ser útil justamente quando as coisas já estão dando errado, e nessa hora saber o estado real
+vale mais do que uma resposta binária.
 
 ---
 
@@ -111,7 +126,11 @@ uma janela em que os filhos já pararam e o pai ainda aceita trabalho novo.
 
 ```
 POST /api/cards/{issueKeyPai}/subcards   {"titulo": "...", "descricao": "..."}
+GET  /api/cards/{issueKey}/subcards      ->  200 com a lista (vazia se não tiver filhos)
 ```
+
+Card sem subtarefa devolve `[]` com `200`, não `404`. Chave de subtarefa devolve `[]` pelo mesmo
+motivo do parágrafo seguinte.
 
 Profundidade máxima é **1**, e isso é de propósito: no Jira subtarefa não tem subtarefa. O teto vem
 da plataforma de graça. Sentir vontade de recursão é sinal de que alguém saiu da subtarefa — e perdeu
@@ -119,6 +138,42 @@ o teto junto.
 
 O tipo de item da subtarefa é descoberto em runtime a partir dos tipos do projeto, não fixo em
 inglês. Não presuma o nome `Subtask`; num Jira em português ele é `Subtarefa`.
+
+---
+
+## Ler o custo da árvore
+
+```
+GET /api/cards/{issueKey}/custo   ->  200
+```
+
+Devolve `custoProprio`, `porCard[]` (com número de execuções por card), `custoTotal`,
+`filhosSemCusto[]` e `linhasDescartadas`. Tudo somado **na leitura** — nenhum total é gravado.
+
+Duas leituras que parecem iguais e não são:
+
+| Resposta | Significa |
+|---|---|
+| `custoTotal: null` | **Nunca foi medido.** Não vale zero na soma de nada |
+| `custoTotal: 0` | Foi medido e as linhas se anulam (houve estorno) |
+
+`filhosSemCusto` lista os filhos sem nenhuma linha. Não é enfeite: é o que diz o quanto confiar no
+total antes de decidir continuar gastando.
+
+---
+
+## Corrigir custo gravado errado
+
+```
+POST /api/cards/{issueKey}/custos/estornos   {"ts": "...", "card": "...", "motivo": "..."}
+```
+
+O ledger é append-only: **nada é apagado**. O estorno acrescenta uma linha com os valores negativos,
+apontando a linha corrigida em `estorna`. O total volta ao certo e a auditoria continua mostrando que
+houve erro e que foi corrigido.
+
+Estorno em duplicidade é recusado com `404` — uma linha só pode ser estornada uma vez, senão o total
+passa a mentir para baixo.
 
 ---
 

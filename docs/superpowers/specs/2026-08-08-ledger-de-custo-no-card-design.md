@@ -224,6 +224,31 @@ Se um dia o campo for criado, ele deve ser **derivado** do bloco, nunca fonte da
 
 ---
 
+## 7-A. Adendo de 2026-08-08 — o que a implementação mudou
+
+Três ajustes decididos durante a implementação de `KAN-17`, `KAN-18`, `KAN-19` e `KAN-38`, todos
+verificados contra o Jira real.
+
+**`ts` é gravado em UTC.** A spec dizia "sem timezone"; sem fuso declarado a linha ficaria ambígua.
+O Jira devolve tudo em UTC e misturar fusos num mesmo bloco seria pior. UTC, minuto, sem sufixo.
+
+**O contrato do `KAN-18` mudou de forma, não de conteúdo.** Foi especificado como "somar o custo de
+cada filho", pressupondo um bloco por card. Com o ledger no pai, todas as linhas estão num bloco só:
+o agregado sai de **uma chamada**, agrupando por `card`. Mesma resposta (`custoProprio`, por card,
+total, `filhosSemCusto`), sem N+1.
+
+**`custoTotal` nulo e `custoTotal` zero são respostas diferentes, e agora em toda a API.** Nulo é
+"nunca medido"; zero é "medido e as linhas se anulam", que passou a ser possível com o estorno. A
+primeira versão devolvia `0` no agregado quando não havia linha nenhuma — corrigido, porque é
+exatamente o erro que a seção 5 desta spec proíbe.
+
+**Estorno resolve a lacuna que a spec não previa.** Não havia caminho para corrigir linha errada, e
+o ledger é append-only de propósito. `POST /custos/estornos` acrescenta uma linha com os valores
+negativos, apontando a corrigida em `estorna`. Nada é apagado: o total volta ao certo e a auditoria
+continua mostrando que houve erro e correção. Estorno em duplicidade é recusado.
+
+---
+
 ## 8. Fora de escopo
 
 - Ledger em comentário (superseded pela §11.6 acima)
