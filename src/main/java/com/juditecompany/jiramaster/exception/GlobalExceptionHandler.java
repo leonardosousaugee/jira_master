@@ -54,6 +54,11 @@ public class GlobalExceptionHandler {
         return problema;
     }
 
+    @ExceptionHandler(ContadoresAusentesException.class)
+    public ProblemDetail handleContadoresAusentes(ContadoresAusentesException ex) {
+        return ProblemDetail.forStatusAndDetail(HttpStatus.BAD_REQUEST, ex.getMessage());
+    }
+
     @ExceptionHandler(CampoWorkerNaoDisponivelException.class)
     public ProblemDetail handleCampoWorkerNaoDisponivel(CampoWorkerNaoDisponivelException ex) {
         return ProblemDetail.forStatusAndDetail(HttpStatus.UNPROCESSABLE_ENTITY, ex.getMessage());

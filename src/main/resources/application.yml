@@ -9,24 +9,79 @@ jira:
   subtask-issue-type-id: ${JIRA_SUBTASK_ISSUE_TYPE_ID:}
   worker-field-id: ${JIRA_WORKER_FIELD_ID:}
 
-# Tarifas em dolares por milhao de tokens. Os quatro contadores tem precos diferentes:
-# cache read custa um decimo do input cheio e domina o volume de sessao longa.
+# Tarifas em dolares por milhao de tokens, referencia 2026-06-24. Os cinco contadores tem precos
+# diferentes e a diferenca nao e cosmetica: cache lido custa um decimo da entrada nova e domina o
+# volume de sessao longa; cache escrito com validade de 1h custa o dobro dela.
+#
+# Multiplicadores sobre a tarifa de entrada: cache-write-5m = 1,25x | cache-write-1h = 2x |
+# cache-read = 0,1x. Contexto de 1M nao tem premio — usa a tarifa da base.
+#
+# Nota de preco: claude-sonnet-5 esta com promocao de entrada ate 2026-08-31 (2.00 / 10.00). A
+# tabela abaixo usa o preco de lista; trocar aqui se a estimativa precisar do promocional.
 custo:
+  tabela-versao: "2026-06-24"
   tarifas:
+    claude-fable-5:
+      input: 10.00
+      output: 50.00
+      cache-write5m: 12.50
+      cache-write1h: 20.00
+      cache-read: 1.00
+    claude-mythos-5:
+      input: 10.00
+      output: 50.00
+      cache-write5m: 12.50
+      cache-write1h: 20.00
+      cache-read: 1.00
     claude-opus-5:
       input: 5.00
       output: 25.00
-      cache-write: 6.25
+      cache-write5m: 6.25
+      cache-write1h: 10.00
+      cache-read: 0.50
+    # Fast mode roda o mesmo modelo com preco proprio, entao precisa de linha propria: cobrar a
+    # tarifa da base por uma execucao em fast mode gravaria metade do custo real no ledger.
+    claude-opus-5-fast:
+      input: 10.00
+      output: 50.00
+      cache-write5m: 12.50
+      cache-write1h: 20.00
+      cache-read: 1.00
+    claude-opus-4-8:
+      input: 5.00
+      output: 25.00
+      cache-write5m: 6.25
+      cache-write1h: 10.00
+      cache-read: 0.50
+    claude-opus-4-7:
+      input: 5.00
+      output: 25.00
+      cache-write5m: 6.25
+      cache-write1h: 10.00
+      cache-read: 0.50
+    claude-opus-4-6:
+      input: 5.00
+      output: 25.00
+      cache-write5m: 6.25
+      cache-write1h: 10.00
       cache-read: 0.50
     claude-sonnet-5:
       input: 3.00
       output: 15.00
-      cache-write: 3.75
+      cache-write5m: 3.75
+      cache-write1h: 6.00
+      cache-read: 0.30
+    claude-sonnet-4-6:
+      input: 3.00
+      output: 15.00
+      cache-write5m: 3.75
+      cache-write1h: 6.00
       cache-read: 0.30
     claude-haiku-4-5:
       input: 1.00
       output: 5.00
-      cache-write: 1.25
+      cache-write5m: 1.25
+      cache-write1h: 2.00
       cache-read: 0.10
 
 springdoc:

@@ -18,6 +18,7 @@ traduz, valida e mantém as invariantes que o Jira sozinho não garante.
 - [Configuração](#configuração)
 - [Endpoints](#endpoints)
 - [Worker — quem executa o card](#worker--quem-executa-o-card)
+- [Tarifas — a tabela como serviço](#tarifas--a-tabela-como-serviço)
 - [Ledger de custo](#ledger-de-custo)
 - [HOLD — o kill switch da árvore](#hold--o-kill-switch-da-árvore)
 - [Erros](#erros)
@@ -50,7 +51,9 @@ Spring Boot 3.3, Java 21. Sem banco de dados — o estado mora no Jira.
 
 ```
 controller/   JiraCardController          camada HTTP, /api/cards
+              TarifaController            camada HTTP, /api/tarifas
 service/      JiraCardService(+Impl)      regras: custo, HOLD, descoberta de transição
+custo/        CalculadoraDeCusto          a única tabela de tarifas em código, dois chamadores
 ledger/       LedgerDeCusto, LinhaCusto   leitura e escrita do bloco de custo na descrição
 mapper/       JiraCardMapper, AdfMapper   Jira <-> domínio; texto <-> ADF
 client/       JiraApiClient + DTOs        chamadas HTTP à API do Jira Cloud
@@ -104,8 +107,9 @@ Variáveis lidas do `.env` na raiz (via `spring-dotenv`) ou do ambiente. O `.env
 As três primeiras são validadas na subida: faltando qualquer uma, a aplicação não inicia.
 
 As tarifas de custo por modelo ficam em `src/main/resources/application.yml`, sob `custo.tarifas`,
-em dólares por milhão de tokens. Preço muda e modelo novo aparece — por isso configuração e não
-literal no código.
+em dólares por milhão de tokens, com a data da tabela em `custo.tabela-versao`. Preço muda e modelo
+novo aparece — por isso configuração e não literal no código. Ver
+[Tarifas — a tabela como serviço](#tarifas--a-tabela-como-serviço).
 
 ## Endpoints
 
@@ -143,6 +147,12 @@ Base: `/api/cards`
 | `POST` | `/api/cards/{issueKey}/custos` | Registra uma execução e devolve a linha gravada | `201` |
 | `GET` | `/api/cards/{issueKey}/custo` | Soma o custo do card e de toda a árvore | `200` |
 | `POST` | `/api/cards/{issueKey}/custos/estornos` | Estorna uma linha, acrescentando a negativa | `201` |
+
+### Tarifas
+
+| Método | Rota | O que faz | Sucesso |
+|---|---|---|---|
+| `GET` | `/api/tarifas/custo?modelo=&entradaNova=&...` | Converte contadores de token em dólar. Cálculo puro — não grava nada | `200` |
 
 ### Comentários
 
@@ -185,13 +195,13 @@ curl -X PATCH http://localhost:8080/api/cards/KAN-42 \
   -d '{"worker":"agente-beta"}'
 ```
 
-Registrar o custo de uma execução — os quatro contadores vão **separados**, sem soma e sem
-conversão para dólar do lado de quem chama:
+Registrar o custo de uma execução — os contadores vão **separados**, sem soma e sem conversão para
+dólar do lado de quem chama. `cacheCreation1hTokens` é opcional e vale zero por omissão:
 
 ```bash
 curl -X POST http://localhost:8080/api/cards/KAN-42/custos \
   -H 'Content-Type: application/json' \
-  -d '{"modelo":"claude-opus-5","inputTokens":12000,"cacheCreationTokens":8000,"cacheReadTokens":150000,"outputTokens":3000}'
+  -d '{"modelo":"claude-opus-5","inputTokens":12000,"cacheCreationTokens":8000,"cacheCreation1hTokens":0,"cacheReadTokens":150000,"outputTokens":3000}'
 ```
 
 Ler o custo da árvore:
@@ -213,6 +223,73 @@ curl http://localhost:8080/api/cards/KAN-42/custo
   "linhasDescartadas": 0
 }
 ```
+
+## Tarifas — a tabela como serviço
+
+A tabela de preços em dólar vive num lugar só, em código, e é consultável por máquina. O agente que
+executa trabalho manda contadores de token e não precisa carregar preço nenhum:
+
+```bash
+curl 'http://localhost:8080/api/tarifas/custo?modelo=claude-opus-5&entradaNova=120000&entradaCacheLida=850000&entradaCacheEscrita1h=40000&saida=6000'
+```
+
+```json
+{
+  "modelo": "claude-opus-5",
+  "custoUsd": 1.5750,
+  "detalhe": {
+    "entradaNova": 0.6000,
+    "entradaCacheLida": 0.4250,
+    "entradaCacheEscrita5m": 0.0000,
+    "entradaCacheEscrita1h": 0.4000,
+    "saida": 0.1500
+  },
+  "tabelaVersao": "2026-06-24"
+}
+```
+
+É **cálculo puro**: não grava, não move card, não escreve linha de custo. `POST /custos` continua
+calculando por dentro — os dois caminhos compartilham a mesma calculadora, então `getCusto` fora do
+ar atrapalha estimativa e nunca a gravação do ledger.
+
+### Cinco contadores, não dois
+
+Cada componente tem multiplicador próprio sobre a tarifa de entrada. Somar tudo como "entrada" infla
+o número em quase dez vezes numa sessão longa, onde a maior parte da entrada é leitura de cache.
+
+| Contador | Multiplicador sobre a entrada |
+|---|---|
+| `entradaNova` | 1× |
+| `entradaCacheLida` | 0,1× |
+| `entradaCacheEscrita5m` | 1,25× |
+| `entradaCacheEscrita1h` | 2× |
+| `saida` | tarifa de saída (≈ 5× a de entrada) |
+
+Contador ausente vale zero. **Todos ausentes vale `400`**, não `custoUsd: 0` — zero medido e não
+medido são coisas diferentes.
+
+### `tabelaVersao`
+
+Sai em toda resposta. Sem ela, uma mudança de preço reescreve retroativamente o significado de todo
+número já calculado: o resultado precisa dizer com que insumo foi produzido. A versão e os preços
+ficam em `application.yml`, sob `custo`.
+
+### Variante de modelo
+
+**String de modelo desconhecida é recusada com `422`, nunca cobrada com o preço da base.** Aceitar a
+variante e cobrar o preço-base gravaria número errado com cara de certo — o pior resultado possível
+para um ledger. Duas razões concretas por que a regra não pode ser "tira o sufixo e usa a base":
+
+- **Contexto de 1M não tem prêmio** — a tarifa é a mesma da base, então `claude-opus-5` já cobre.
+- **Fast mode custa o dobro** — por isso `claude-opus-5-fast` é linha própria na tabela.
+
+Modelo novo entra acrescentando uma linha em `custo.tarifas`; até lá, o serviço recusa.
+
+> **Nota de preço:** `claude-sonnet-5` está com promoção de entrada até 2026-08-31 (US$ 2,00 /
+> US$ 10,00 por milhão). A tabela usa o preço de lista (US$ 3,00 / US$ 15,00); troque em
+> `application.yml` se a estimativa precisar do promocional.
+
+Especificação de origem: [`docs/spec-tarifas-getcusto.md`](docs/spec-tarifas-getcusto.md).
 
 ## Ledger de custo
 
@@ -287,6 +364,7 @@ chamada.
 | Modelo sem tarifa configurada | `422` | `modelosConhecidos` |
 | Tipo de subtarefa não encontrado no projeto | `422` | `tiposDisponiveis` |
 | `worker` informado numa instância sem o campo Worker | `422` | — |
+| `GET /api/tarifas/custo` sem nenhum contador de token | `400` | — |
 | Erro repassado pela API do Jira | status do Jira | — |
 | Qualquer outra falha | `500` | — |
 

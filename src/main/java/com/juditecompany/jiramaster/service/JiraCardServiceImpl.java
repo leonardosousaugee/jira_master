@@ -3,7 +3,8 @@ package com.juditecompany.jiramaster.service;
 import com.juditecompany.jiramaster.client.JiraApiClient;
 import com.juditecompany.jiramaster.client.dto.*;
 import com.juditecompany.jiramaster.config.JiraProperties;
-import com.juditecompany.jiramaster.config.TarifaProperties;
+import com.juditecompany.jiramaster.custo.CalculadoraDeCusto;
+import com.juditecompany.jiramaster.custo.Contadores;
 import com.juditecompany.jiramaster.dto.request.*;
 import com.juditecompany.jiramaster.dto.response.*;
 import com.juditecompany.jiramaster.exception.CampoWorkerNaoDisponivelException;
@@ -43,7 +44,7 @@ public class JiraCardServiceImpl implements JiraCardService {
     private final JiraCardMapper cardMapper;
     private final AdfMapper adfMapper;
     private final JiraProperties jiraProperties;
-    private final TarifaProperties tarifaProperties;
+    private final CalculadoraDeCusto calculadora;
     private final LedgerDeCusto ledger;
     private final Clock relogio;
     private final Map<String, String> tipoDeSubtarefaPorProjeto = new ConcurrentHashMap<>();
@@ -62,12 +63,12 @@ public class JiraCardServiceImpl implements JiraCardService {
 
     public JiraCardServiceImpl(JiraApiClient jiraApiClient, JiraCardMapper cardMapper,
                                 AdfMapper adfMapper, JiraProperties jiraProperties,
-                                TarifaProperties tarifaProperties, LedgerDeCusto ledger, Clock relogio) {
+                                CalculadoraDeCusto calculadora, LedgerDeCusto ledger, Clock relogio) {
         this.jiraApiClient = jiraApiClient;
         this.cardMapper = cardMapper;
         this.adfMapper = adfMapper;
         this.jiraProperties = jiraProperties;
-        this.tarifaProperties = tarifaProperties;
+        this.calculadora = calculadora;
         this.ledger = ledger;
         this.relogio = relogio;
     }
@@ -125,19 +126,19 @@ public class JiraCardServiceImpl implements JiraCardService {
 
     @Override
     public LinhaCusto registrarCusto(String issueKey, RegistrarCustoRequest request) {
-        TarifaProperties.Tarifa tarifa = tarifaProperties.getTarifas().get(request.modelo());
-        if (tarifa == null) {
-            throw new ModeloDesconhecidoException(request.modelo(), tarifaProperties.modelosConhecidos());
-        }
+        // A conversao para dolar sai daqui: o mesmo componente atende este caminho e o endpoint de
+        // consulta, entao os dois nunca divergem. Modelo desconhecido e recusado pela calculadora.
+        var contadores = new Contadores(request.inputTokens(), request.cacheReadTokens(),
+                request.cacheCreationTokens(), request.cacheCreation1hTokens(), request.outputTokens());
+        BigDecimal usd = calculadora.calcular(request.modelo(), contadores).custoUsd();
 
         JiraIssueDto card = buscarIssueOuLancarNaoEncontrado(issueKey);
         JiraFieldRef pai = card.fields().parent();
         String chaveAlvo = pai != null ? pai.key() : issueKey;
 
-        long entrada = request.inputTokens() + request.cacheCreationTokens() + request.cacheReadTokens();
         var linha = new LinhaCusto(
                 LocalDateTime.now(relogio).truncatedTo(ChronoUnit.MINUTES).format(FORMATO_TS),
-                issueKey, entrada, request.outputTokens(), calcularUsd(request, tarifa));
+                issueKey, contadores.entradaTotal(), request.outputTokens(), usd);
 
         // O Jira nao oferece compare-and-swap em update de issue, entao o lock em processo e a
         // unica protecao contra duas escritas concorrentes perderem uma linha. Isso torna a
@@ -304,14 +305,6 @@ public class JiraCardServiceImpl implements JiraCardService {
     /** BLOQUEADO e HOLD sao o mesmo estado; o fluxo do KAN so tem HOLD, os demais sao sinonimos. */
     private boolean ehHold(String nomeEtapa) {
         return nomeEtapa != null && NOMES_DE_HOLD.contains(nomeEtapa.trim().toUpperCase(Locale.ROOT));
-    }
-
-    private BigDecimal calcularUsd(RegistrarCustoRequest request, TarifaProperties.Tarifa tarifa) {
-        BigDecimal total = tarifa.input().multiply(BigDecimal.valueOf(request.inputTokens()))
-                .add(tarifa.cacheWrite().multiply(BigDecimal.valueOf(request.cacheCreationTokens())))
-                .add(tarifa.cacheRead().multiply(BigDecimal.valueOf(request.cacheReadTokens())))
-                .add(tarifa.output().multiply(BigDecimal.valueOf(request.outputTokens())));
-        return total.divide(POR_MILHAO, 4, RoundingMode.HALF_UP);
     }
 
     /**

@@ -11,16 +11,23 @@ import java.util.Map;
  * Tarifas por milhao de tokens, por modelo. Fica em configuracao e nao em literal no codigo porque
  * preco muda e modelo novo aparece.
  *
- * <p>Os quatro contadores tem tarifas diferentes e a diferenca nao e cosmetica: cache read custa um
- * decimo do input cheio e domina o volume de sessao longa. Somar os contadores de entrada numa
- * tarifa so erra por multiplos, sempre para cima.
+ * <p>Os cinco contadores tem tarifas diferentes e a diferenca nao e cosmetica: cache lido custa um
+ * decimo da entrada nova e domina o volume de sessao longa, enquanto cache escrito com validade de
+ * uma hora custa o dobro dela. Somar os contadores de entrada numa tarifa so erra por multiplos.
+ *
+ * <p>{@code tabelaVersao} sai em toda resposta de calculo. Sem ela, uma mudanca de preco reescreve
+ * retroativamente o significado de todo numero ja calculado: o resultado precisa dizer com que
+ * insumo foi produzido.
  */
 @ConfigurationProperties(prefix = "custo")
 public class TarifaProperties {
 
     private Map<String, Tarifa> tarifas = new LinkedHashMap<>();
 
-    public record Tarifa(BigDecimal input, BigDecimal output, BigDecimal cacheWrite, BigDecimal cacheRead) {
+    private String tabelaVersao;
+
+    public record Tarifa(BigDecimal input, BigDecimal output,
+                         BigDecimal cacheWrite5m, BigDecimal cacheWrite1h, BigDecimal cacheRead) {
     }
 
     public Map<String, Tarifa> getTarifas() {
@@ -29,6 +36,14 @@ public class TarifaProperties {
 
     public void setTarifas(Map<String, Tarifa> tarifas) {
         this.tarifas = tarifas;
+    }
+
+    public String getTabelaVersao() {
+        return tabelaVersao;
+    }
+
+    public void setTabelaVersao(String tabelaVersao) {
+        this.tabelaVersao = tabelaVersao;
     }
 
     public List<String> modelosConhecidos() {

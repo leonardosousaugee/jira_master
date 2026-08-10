@@ -6,6 +6,8 @@ import com.juditecompany.jiramaster.client.JiraApiClient;
 import com.juditecompany.jiramaster.client.dto.*;
 import com.juditecompany.jiramaster.config.JiraProperties;
 import com.juditecompany.jiramaster.config.TarifaProperties;
+import com.juditecompany.jiramaster.custo.CalculadoraDeCusto;
+import com.juditecompany.jiramaster.custo.Contadores;
 import com.juditecompany.jiramaster.dto.request.*;
 import com.juditecompany.jiramaster.dto.response.CardResponse;
 import com.juditecompany.jiramaster.dto.response.CardResumoResponse;
@@ -93,12 +95,13 @@ class JiraCardServiceImplTest {
                 + String.join("\n", linhas) + "\n" + LedgerDeCusto.FECHAMENTO;
     }
 
-    private TarifaProperties tarifasDeTeste() {
+    private CalculadoraDeCusto calculadoraDeTeste() {
         TarifaProperties tarifas = new TarifaProperties();
+        tarifas.setTabelaVersao("2026-06-24");
         tarifas.setTarifas(new java.util.LinkedHashMap<>(Map.of("claude-opus-5",
                 new TarifaProperties.Tarifa(new BigDecimal("5.00"), new BigDecimal("25.00"),
-                        new BigDecimal("6.25"), new BigDecimal("0.50")))));
-        return tarifas;
+                        new BigDecimal("6.25"), new BigDecimal("10.00"), new BigDecimal("0.50")))));
+        return new CalculadoraDeCusto(tarifas);
     }
 
     private JiraProperties propriedadesDeTeste() {
@@ -135,7 +138,7 @@ class JiraCardServiceImplTest {
         JiraProperties propriedades = propriedadesDeTeste();
         propriedades.setWorkerFieldId(null);
         return new JiraCardServiceImpl(jiraApiClient, cardMapper, adfMapper, propriedades,
-                tarifasDeTeste(), ledger, RELOGIO);
+                calculadoraDeTeste(), ledger, RELOGIO);
     }
 
     @Test
@@ -243,7 +246,7 @@ class JiraCardServiceImplTest {
 
     @BeforeEach
     void setUp() {
-        service = new JiraCardServiceImpl(jiraApiClient, cardMapper, adfMapper, propriedadesDeTeste(), tarifasDeTeste(), ledger, RELOGIO);
+        service = new JiraCardServiceImpl(jiraApiClient, cardMapper, adfMapper, propriedadesDeTeste(), calculadoraDeTeste(), ledger, RELOGIO);
     }
 
     @Test
@@ -362,7 +365,7 @@ class JiraCardServiceImplTest {
     void devePreferirTipoDeSubtarefaConfiguradoSemConsultarOProjeto() {
         JiraProperties properties = propriedadesDeTeste();
         properties.setSubtaskIssueTypeId("99999");
-        service = new JiraCardServiceImpl(jiraApiClient, cardMapper, adfMapper, properties, tarifasDeTeste(), ledger, RELOGIO);
+        service = new JiraCardServiceImpl(jiraApiClient, cardMapper, adfMapper, properties, calculadoraDeTeste(), ledger, RELOGIO);
         when(jiraApiClient.criarIssue(any())).thenReturn(new JiraCreatedIssueDto("10002", "KAN-2"));
         when(jiraApiClient.buscarIssuePorChave("KAN-2")).thenReturn(issueDeExemplo("KAN-2", "To Do"));
 
@@ -389,7 +392,7 @@ class JiraCardServiceImplTest {
         when(jiraApiClient.buscarIssuePorChave("KAN-5")).thenReturn(issueDeExemplo("KAN-5", "To Do", null, "Texto humano"));
 
         LinhaCusto linha = service.registrarCusto("KAN-15",
-                new RegistrarCustoRequest("claude-opus-5", 1000, 1000, 1_000_000, 1000));
+                new RegistrarCustoRequest("claude-opus-5", 1000, 1000, 0, 1_000_000, 1000));
 
         assertThat(linha.card()).isEqualTo("KAN-15");
         assertThat(linha.ts()).isEqualTo("2026-08-08T13:04");
@@ -399,12 +402,51 @@ class JiraCardServiceImplTest {
         verify(jiraApiClient, never()).atualizarIssue(eq("KAN-15"), any());
     }
 
+    /**
+     * O teste que prova a tarefa: os mesmos contadores tem que dar o mesmo numero no registro e na
+     * consulta. Divergencia aqui significa que voltou a existir uma segunda tabela em codigo.
+     */
+    @Test
+    void deveGravarOMesmoNumeroQueAConsultaDaTabelaDevolve() {
+        when(jiraApiClient.buscarIssuePorChave("KAN-5")).thenReturn(issueDeExemplo("KAN-5", "To Do", null, null));
+
+        LinhaCusto gravada = service.registrarCusto("KAN-5",
+                new RegistrarCustoRequest("claude-opus-5", 120_000, 0, 40_000, 850_000, 6000));
+        BigDecimal consultado = calculadoraDeTeste()
+                .calcular("claude-opus-5", new Contadores(120_000, 850_000, 0, 40_000, 6000))
+                .custoUsd();
+
+        assertThat(gravada.usd()).isEqualByComparingTo(consultado);
+    }
+
+    @Test
+    void deveCobrarCacheDeUmaHoraNoRegistroDeCusto() {
+        when(jiraApiClient.buscarIssuePorChave("KAN-5")).thenReturn(issueDeExemplo("KAN-5", "To Do", null, null));
+
+        LinhaCusto linha = service.registrarCusto("KAN-5",
+                new RegistrarCustoRequest("claude-opus-5", 0, 0, 1_000_000, 0, 0));
+
+        assertThat(linha.usd()).isEqualByComparingTo(new BigDecimal("10.0000"));
+    }
+
+    /** O contador de 1h e opcional: quem ja chamava com quatro contadores nao muda de resultado. */
+    @Test
+    void deveSomarTodosOsContadoresDeEntradaNaLinhaGravada() {
+        when(jiraApiClient.buscarIssuePorChave("KAN-5")).thenReturn(issueDeExemplo("KAN-5", "To Do", null, null));
+
+        LinhaCusto linha = service.registrarCusto("KAN-5",
+                new RegistrarCustoRequest("claude-opus-5", 1000, 2000, 4000, 8000, 500));
+
+        assertThat(linha.in()).isEqualTo(15_000);
+        assertThat(linha.out()).isEqualTo(500);
+    }
+
     @Test
     void deveCalcularUsdComAsQuatroTarifasEnaoComUmaSo() {
         when(jiraApiClient.buscarIssuePorChave("KAN-5")).thenReturn(issueDeExemplo("KAN-5", "To Do", null, null));
 
         LinhaCusto linha = service.registrarCusto("KAN-5",
-                new RegistrarCustoRequest("claude-opus-5", 1000, 1000, 1_000_000, 1000));
+                new RegistrarCustoRequest("claude-opus-5", 1000, 1000, 0, 1_000_000, 1000));
 
         // 1000*5 + 1000*6,25 + 1000000*0,50 + 1000*25 = 536250 / 1e6
         assertThat(linha.usd()).isEqualByComparingTo(new BigDecimal("0.5363"));
@@ -416,7 +458,7 @@ class JiraCardServiceImplTest {
     void deveGravarNoProprioCardQuandoNaoTemPai() {
         when(jiraApiClient.buscarIssuePorChave("KAN-3")).thenReturn(issueDeExemplo("KAN-3", "To Do", null, null));
 
-        service.registrarCusto("KAN-3", new RegistrarCustoRequest("claude-opus-5", 10, 0, 0, 10));
+        service.registrarCusto("KAN-3", new RegistrarCustoRequest("claude-opus-5", 10, 0, 0, 0, 10));
 
         verify(jiraApiClient).atualizarIssue(eq("KAN-3"), any());
     }
@@ -424,7 +466,7 @@ class JiraCardServiceImplTest {
     @Test
     void deveRecusarModeloSemTarifaEnaoGravarNada() {
         assertThatThrownBy(() -> service.registrarCusto("KAN-5",
-                new RegistrarCustoRequest("modelo-inventado", 10, 0, 0, 10)))
+                new RegistrarCustoRequest("modelo-inventado", 10, 0, 0, 0, 10)))
                 .isInstanceOf(ModeloDesconhecidoException.class);
 
         verify(jiraApiClient, never()).atualizarIssue(anyString(), any());
@@ -438,7 +480,7 @@ class JiraCardServiceImplTest {
         when(jiraApiClient.buscarIssuePorChave("KAN-5"))
                 .thenReturn(issueDeExemplo("KAN-5", "To Do", null, descricaoComUmaLinha));
 
-        service.registrarCusto("KAN-5", new RegistrarCustoRequest("claude-opus-5", 10, 0, 0, 10));
+        service.registrarCusto("KAN-5", new RegistrarCustoRequest("claude-opus-5", 10, 0, 0, 0, 10));
 
         verify(jiraApiClient).atualizarIssue(eq("KAN-5"), argThat(req -> {
             String texto = adfMapper.adfParaTexto(objectMapper.valueToTree(req.fields().description()));
