@@ -27,6 +27,21 @@ public class JiraProperties {
      */
     private String subtaskIssueTypeId;
 
+    /**
+     * Id do campo customizado Worker (ex.: {@code customfield_10073}). Opcional: em branco, o id e
+     * descoberto em runtime lendo os campos da instancia e casando pelo nome "Worker". Serve de
+     * escape quando existe mais de um campo com esse nome ou o campo foi renomeado.
+     */
+    private String workerFieldId;
+
+    public String getWorkerFieldId() {
+        return workerFieldId;
+    }
+
+    public void setWorkerFieldId(String workerFieldId) {
+        this.workerFieldId = workerFieldId;
+    }
+
     public String getSubtaskIssueTypeId() {
         return subtaskIssueTypeId;
     }

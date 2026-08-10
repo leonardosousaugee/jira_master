@@ -39,7 +39,7 @@ class JiraCardControllerTest {
 
     @Test
     void deveCriarCardERetornar201() throws Exception {
-        CardResponse resposta = new CardResponse("KAN-1", "Titulo", "Descricao", "To Do", "Medium", "Task", "KAN",
+        CardResponse resposta = new CardResponse("KAN-1", "Titulo", "Descricao", "To Do", "Medium", "Task", "KAN", "agente-alpha",
                 Instant.parse("2026-08-05T10:00:00Z"), Instant.parse("2026-08-05T10:00:00Z"), null, java.util.List.of(), 0);
         when(service.criarCard(any())).thenReturn(resposta);
 
@@ -62,7 +62,7 @@ class JiraCardControllerTest {
 
     @Test
     void deveBuscarCardPorIdERetornar200() throws Exception {
-        CardResponse resposta = new CardResponse("KAN-1", "Titulo", "Descricao", "To Do", "Medium", "Task", "KAN",
+        CardResponse resposta = new CardResponse("KAN-1", "Titulo", "Descricao", "To Do", "Medium", "Task", "KAN", "agente-alpha",
                 Instant.parse("2026-08-05T10:00:00Z"), Instant.parse("2026-08-05T10:00:00Z"), null, java.util.List.of(), 0);
         when(service.buscarCardPorId("KAN-1")).thenReturn(resposta);
 

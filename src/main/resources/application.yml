@@ -7,6 +7,7 @@ jira:
   api-token: ${JIRA_API_TOKEN}
   default-project-key: ${JIRA_DEFAULT_PROJECT_KEY:KAN}
   subtask-issue-type-id: ${JIRA_SUBTASK_ISSUE_TYPE_ID:}
+  worker-field-id: ${JIRA_WORKER_FIELD_ID:}
 
 # Tarifas em dolares por milhao de tokens. Os quatro contadores tem precos diferentes:
 # cache read custa um decimo do input cheio e domina o volume de sessao longa.

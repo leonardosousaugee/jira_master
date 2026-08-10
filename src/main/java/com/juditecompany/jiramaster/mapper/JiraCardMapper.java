@@ -30,7 +30,12 @@ public class JiraCardMapper {
         this.ledger = ledger;
     }
 
-    public CardResponse paraCardResponse(JiraIssueDto issue) {
+    /**
+     * {@code workerFieldId} chega do servico, que resolve o id do campo customizado em runtime.
+     * Nulo significa "a instancia nao tem esse campo": o card sai com {@code worker} nulo em vez de
+     * o mapeamento falhar.
+     */
+    public CardResponse paraCardResponse(JiraIssueDto issue, String workerFieldId) {
         var fields = issue.fields();
         String descricaoCompleta = adfMapper.adfParaTexto(fields.description());
 
@@ -45,6 +50,7 @@ public class JiraCardMapper {
                 fields.priority() != null ? fields.priority().name() : null,
                 fields.issuetype().name(),
                 fields.project().key(),
+                fields.textoDoCampo(workerFieldId),
                 paraInstant(fields.created()),
                 paraInstant(fields.updated()),
                 leitura.linhas().isEmpty() ? null : leitura.total(),
@@ -62,13 +68,14 @@ public class JiraCardMapper {
         return (antes.isEmpty() || depois.isEmpty()) ? antes + depois : antes + "\n" + depois;
     }
 
-    public CardResumoResponse paraCardResumoResponse(JiraIssueDto issue) {
+    public CardResumoResponse paraCardResumoResponse(JiraIssueDto issue, String workerFieldId) {
         var fields = issue.fields();
         return new CardResumoResponse(
                 issue.key(),
                 fields.summary(),
                 fields.status().name(),
-                fields.priority() != null ? fields.priority().name() : null
+                fields.priority() != null ? fields.priority().name() : null,
+                fields.textoDoCampo(workerFieldId)
         );
     }
 

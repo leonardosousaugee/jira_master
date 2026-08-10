@@ -11,6 +11,7 @@ import com.juditecompany.jiramaster.dto.response.CardResponse;
 import com.juditecompany.jiramaster.dto.response.CardResumoResponse;
 import com.juditecompany.jiramaster.dto.response.CustoArvoreResponse;
 import com.juditecompany.jiramaster.dto.response.ResultadoHoldResponse;
+import com.juditecompany.jiramaster.exception.CampoWorkerNaoDisponivelException;
 import com.juditecompany.jiramaster.exception.CardNotFoundException;
 import com.juditecompany.jiramaster.exception.JiraApiException;
 import com.juditecompany.jiramaster.exception.LinhaDeCustoNaoEncontradaException;
@@ -106,6 +107,7 @@ class JiraCardServiceImplTest {
         properties.setEmail("leonardo.sousa@witzler-ultragaz.com.br");
         properties.setApiToken("token-de-teste");
         properties.setDefaultProjectKey("KAN");
+        properties.setWorkerFieldId("customfield_10073");
         return properties;
     }
 
@@ -114,6 +116,129 @@ class JiraCardServiceImplTest {
                 new JiraIssueTypeDto("10001", "Epic", false),
                 new JiraIssueTypeDto("10002", "Subtarefa", true),
                 new JiraIssueTypeDto("10003", "Tarefa", false)));
+    }
+
+    private JiraIssueDto issueComWorker(String key, String worker) {
+        try {
+            return objectMapper.readValue("""
+                    {"id":"10001","key":"%s","fields":{"summary":"Titulo","status":{"name":"To Do"},
+                    "priority":{"name":"Medium"},"issuetype":{"name":"Task"},"project":{"key":"KAN"},
+                    "customfield_10073":"%s",
+                    "created":"2026-08-05T10:00:00.000+0000","updated":"2026-08-05T10:00:00.000+0000"}}
+                    """.formatted(key, worker), JiraIssueDto.class);
+        } catch (Exception erro) {
+            throw new IllegalStateException(erro);
+        }
+    }
+
+    private JiraCardServiceImpl servicoSemWorkerConfigurado() {
+        JiraProperties propriedades = propriedadesDeTeste();
+        propriedades.setWorkerFieldId(null);
+        return new JiraCardServiceImpl(jiraApiClient, cardMapper, adfMapper, propriedades,
+                tarifasDeTeste(), ledger, RELOGIO);
+    }
+
+    @Test
+    void deveDescobrirOIdDoCampoWorkerPeloNomeUmaVezSo() {
+        JiraCardServiceImpl servico = servicoSemWorkerConfigurado();
+        when(jiraApiClient.listarCampos()).thenReturn(List.of(
+                new JiraCampoDto("summary", "Resumo"),
+                new JiraCampoDto("customfield_10073", "Worker")));
+        when(jiraApiClient.buscarIssuePorChave("KAN-1")).thenReturn(issueComWorker("KAN-1", "agente-alpha"));
+
+        CardResponse primeiro = servico.buscarCardPorId("KAN-1");
+        servico.buscarCardPorId("KAN-1");
+
+        assertThat(primeiro.worker()).isEqualTo("agente-alpha");
+        verify(jiraApiClient, times(1)).listarCampos();
+    }
+
+    @Test
+    void deveDevolverWorkerNuloQuandoAInstanciaNaoTemOCampo() {
+        JiraCardServiceImpl servico = servicoSemWorkerConfigurado();
+        when(jiraApiClient.listarCampos()).thenReturn(List.of(new JiraCampoDto("summary", "Resumo")));
+        when(jiraApiClient.buscarIssuePorChave("KAN-1")).thenReturn(issueComWorker("KAN-1", "agente-alpha"));
+
+        CardResponse resultado = servico.buscarCardPorId("KAN-1");
+        servico.buscarCardPorId("KAN-1");
+
+        assertThat(resultado.worker()).isNull();
+        verify(jiraApiClient, times(1)).listarCampos();
+    }
+
+    @Test
+    void naoDeveConsultarOsCamposQuandoOIdDoWorkerEstaConfigurado() {
+        when(jiraApiClient.buscarIssuePorChave("KAN-1")).thenReturn(issueComWorker("KAN-1", "agente-alpha"));
+
+        CardResponse resultado = service.buscarCardPorId("KAN-1");
+
+        assertThat(resultado.worker()).isEqualTo("agente-alpha");
+        verify(jiraApiClient, never()).listarCampos();
+    }
+
+    @Test
+    void deveGravarOWorkerAoCriarCard() {
+        when(jiraApiClient.criarIssue(any())).thenReturn(new JiraCreatedIssueDto("10001", "KAN-1"));
+        when(jiraApiClient.buscarIssuePorChave("KAN-1")).thenReturn(issueComWorker("KAN-1", "agente-alpha"));
+
+        service.criarCard(new CriarCardRequest("Titulo", "Descricao", "Task", null, "agente-alpha"));
+
+        verify(jiraApiClient).criarIssue(argThat(req ->
+                "agente-alpha".equals(req.fields().camposCustomizados().get("customfield_10073"))));
+    }
+
+    @Test
+    void naoDeveMandarOCampoWorkerQuandoACriacaoNaoInformaValor() {
+        when(jiraApiClient.criarIssue(any())).thenReturn(new JiraCreatedIssueDto("10001", "KAN-1"));
+        when(jiraApiClient.buscarIssuePorChave("KAN-1")).thenReturn(issueDeExemplo("KAN-1", "To Do"));
+
+        service.criarCard(new CriarCardRequest("Titulo", "Descricao", "Task", null, null));
+
+        verify(jiraApiClient).criarIssue(argThat(req -> req.fields().camposCustomizados().isEmpty()));
+    }
+
+    @Test
+    void deveGravarOWorkerAoEditarCard() {
+        when(jiraApiClient.buscarIssuePorChave("KAN-1")).thenReturn(issueComWorker("KAN-1", "agente-beta"));
+
+        service.editarCard("KAN-1", new EditarCardRequest("Novo titulo", null, "agente-beta"));
+
+        verify(jiraApiClient).atualizarIssue(eq("KAN-1"), argThat(req ->
+                "agente-beta".equals(req.fields().camposCustomizados().get("customfield_10073"))));
+    }
+
+    @Test
+    void naoDeveTocarNoWorkerQuandoAEdicaoNaoInformaValor() {
+        when(jiraApiClient.buscarIssuePorChave("KAN-1")).thenReturn(issueComWorker("KAN-1", "agente-alpha"));
+
+        service.editarCard("KAN-1", new EditarCardRequest("Novo titulo", null, null));
+
+        verify(jiraApiClient).atualizarIssue(eq("KAN-1"), argThat(req -> req.fields().camposCustomizados().isEmpty()));
+    }
+
+    @Test
+    void deveGravarOWorkerAoCriarSubCard() {
+        when(jiraApiClient.criarIssue(any())).thenReturn(new JiraCreatedIssueDto("10002", "KAN-2"));
+        when(jiraApiClient.buscarIssuePorChave("KAN-2")).thenReturn(issueComWorker("KAN-2", "agente-alpha"));
+        when(jiraApiClient.buscarProjeto("KAN")).thenReturn(projetoComTipos());
+
+        service.adicionarSubCard("KAN-1", new AdicionarSubCardRequest("Subtarefa", "Descricao", "agente-alpha"));
+
+        verify(jiraApiClient).criarIssue(argThat(req ->
+                "agente-alpha".equals(req.fields().camposCustomizados().get("customfield_10073"))));
+    }
+
+    @Test
+    void deveRecusarGravarWorkerQuandoAInstanciaNaoTemOCampo() {
+        JiraCardServiceImpl servico = servicoSemWorkerConfigurado();
+        when(jiraApiClient.listarCampos()).thenReturn(List.of(new JiraCampoDto("summary", "Resumo")));
+
+        assertThatThrownBy(() -> servico.criarCard(
+                new CriarCardRequest("Titulo", "Descricao", "Task", null, "agente-alpha")))
+                .isInstanceOf(CampoWorkerNaoDisponivelException.class)
+                .hasMessageContaining("Worker");
+
+        verify(jiraApiClient, never()).criarIssue(any());
     }
 
     @BeforeEach
@@ -126,7 +251,7 @@ class JiraCardServiceImplTest {
         when(jiraApiClient.criarIssue(any())).thenReturn(new JiraCreatedIssueDto("10001", "KAN-1"));
         when(jiraApiClient.buscarIssuePorChave("KAN-1")).thenReturn(issueDeExemplo("KAN-1", "To Do"));
 
-        CardResponse resultado = service.criarCard(new CriarCardRequest("Titulo", "Descricao", "Task", null));
+        CardResponse resultado = service.criarCard(new CriarCardRequest("Titulo", "Descricao", "Task", null, null));
 
         assertThat(resultado.issueKey()).isEqualTo("KAN-1");
         verify(jiraApiClient).criarIssue(argThat(req -> req.fields().project().key().equals("KAN")));
@@ -134,20 +259,20 @@ class JiraCardServiceImplTest {
 
     @Test
     void deveMontarJqlComProjectKeyPadraoQuandoNenhumForInformado() {
-        when(jiraApiClient.buscarIssues(anyString())).thenReturn(new JiraSearchResponseDto(List.of(issueDeExemplo("KAN-1", "To Do"))));
+        when(jiraApiClient.buscarIssues(anyString(), any())).thenReturn(new JiraSearchResponseDto(List.of(issueDeExemplo("KAN-1", "To Do"))));
 
         service.lerCardsEmAberto(null);
 
-        verify(jiraApiClient).buscarIssues("project = KAN AND statusCategory != Done ORDER BY created DESC");
+        verify(jiraApiClient).buscarIssues(eq("project = KAN AND statusCategory != Done ORDER BY created DESC"), any());
     }
 
     @Test
     void deveMontarJqlComProjectKeyInformado() {
-        when(jiraApiClient.buscarIssues(anyString())).thenReturn(new JiraSearchResponseDto(List.of()));
+        when(jiraApiClient.buscarIssues(anyString(), any())).thenReturn(new JiraSearchResponseDto(List.of()));
 
         service.lerCardsEmAberto("OUTRO");
 
-        verify(jiraApiClient).buscarIssues("project = OUTRO AND statusCategory != Done ORDER BY created DESC");
+        verify(jiraApiClient).buscarIssues(eq("project = OUTRO AND statusCategory != Done ORDER BY created DESC"), any());
     }
 
     @Test
@@ -171,7 +296,7 @@ class JiraCardServiceImplTest {
     void deveEditarCardEDevolverEstadoAtualizado() {
         when(jiraApiClient.buscarIssuePorChave("KAN-1")).thenReturn(issueDeExemplo("KAN-1", "To Do"));
 
-        CardResponse resultado = service.editarCard("KAN-1", new EditarCardRequest("Novo titulo", null));
+        CardResponse resultado = service.editarCard("KAN-1", new EditarCardRequest("Novo titulo", null, null));
 
         assertThat(resultado.issueKey()).isEqualTo("KAN-1");
         verify(jiraApiClient).atualizarIssue(eq("KAN-1"), argThat(req -> req.fields().summary().equals("Novo titulo")));
@@ -213,7 +338,7 @@ class JiraCardServiceImplTest {
         when(jiraApiClient.criarIssue(any())).thenReturn(new JiraCreatedIssueDto("10002", "KAN-2"));
         when(jiraApiClient.buscarIssuePorChave("KAN-2")).thenReturn(issueDeExemplo("KAN-2", "To Do"));
 
-        service.adicionarSubCard("KAN-1", new AdicionarSubCardRequest("Subtarefa", "Descricao"));
+        service.adicionarSubCard("KAN-1", new AdicionarSubCardRequest("Subtarefa", "Descricao", null));
 
         verify(jiraApiClient).criarIssue(argThat(req ->
                 req.fields().parent() != null && req.fields().parent().key().equals("KAN-1")
@@ -227,8 +352,8 @@ class JiraCardServiceImplTest {
         when(jiraApiClient.criarIssue(any())).thenReturn(new JiraCreatedIssueDto("10002", "KAN-2"));
         when(jiraApiClient.buscarIssuePorChave("KAN-2")).thenReturn(issueDeExemplo("KAN-2", "To Do"));
 
-        service.adicionarSubCard("KAN-1", new AdicionarSubCardRequest("Uma", null));
-        service.adicionarSubCard("KAN-1", new AdicionarSubCardRequest("Outra", null));
+        service.adicionarSubCard("KAN-1", new AdicionarSubCardRequest("Uma", null, null));
+        service.adicionarSubCard("KAN-1", new AdicionarSubCardRequest("Outra", null, null));
 
         verify(jiraApiClient, times(1)).buscarProjeto("KAN");
     }
@@ -241,7 +366,7 @@ class JiraCardServiceImplTest {
         when(jiraApiClient.criarIssue(any())).thenReturn(new JiraCreatedIssueDto("10002", "KAN-2"));
         when(jiraApiClient.buscarIssuePorChave("KAN-2")).thenReturn(issueDeExemplo("KAN-2", "To Do"));
 
-        service.adicionarSubCard("KAN-1", new AdicionarSubCardRequest("Subtarefa", null));
+        service.adicionarSubCard("KAN-1", new AdicionarSubCardRequest("Subtarefa", null, null));
 
         verify(jiraApiClient, never()).buscarProjeto(anyString());
         verify(jiraApiClient).criarIssue(argThat(req -> req.fields().issuetype().id().equals("99999")));
@@ -252,7 +377,7 @@ class JiraCardServiceImplTest {
         when(jiraApiClient.buscarProjeto("KAN")).thenReturn(new JiraProjectDto("10000", "KAN", List.of(
                 new JiraIssueTypeDto("10003", "Tarefa", false))));
 
-        assertThatThrownBy(() -> service.adicionarSubCard("KAN-1", new AdicionarSubCardRequest("Subtarefa", null)))
+        assertThatThrownBy(() -> service.adicionarSubCard("KAN-1", new AdicionarSubCardRequest("Subtarefa", null, null)))
                 .isInstanceOf(SubtaskIssueTypeNotFoundException.class);
 
         verify(jiraApiClient, never()).criarIssue(any());

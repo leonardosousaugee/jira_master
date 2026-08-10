@@ -51,10 +51,21 @@ class JiraApiClientTest {
                         {"issues":[{"id":"10001","key":"KAN-1","fields":{"summary":"Titulo","status":{"name":"To Do"},"issuetype":{"name":"Task"},"project":{"key":"KAN"},"created":"2026-08-05T10:00:00.000+0000","updated":"2026-08-05T10:00:00.000+0000"}}]}
                         """, MediaType.APPLICATION_JSON));
 
-        JiraSearchResponseDto resultado = client.buscarIssues("project = KAN AND statusCategory != Done");
+        JiraSearchResponseDto resultado = client.buscarIssues("project = KAN AND statusCategory != Done", null);
 
         assertThat(resultado.issues()).hasSize(1);
         assertThat(resultado.issues().get(0).key()).isEqualTo("KAN-1");
+    }
+
+    @Test
+    void deveProjetarOCampoExtraNaBusca() {
+        server.expect(requestTo(org.hamcrest.Matchers.containsString("customfield_10073")))
+                .andExpect(method(HttpMethod.GET))
+                .andRespond(withSuccess("{\"issues\":[]}", MediaType.APPLICATION_JSON));
+
+        client.buscarIssues("project = KAN", "customfield_10073");
+
+        server.verify();
     }
 
     @Test
@@ -68,6 +79,52 @@ class JiraApiClientTest {
         JiraIssueDto resultado = client.buscarIssuePorChave("KAN-1");
 
         assertThat(resultado.fields().summary()).isEqualTo("Titulo");
+    }
+
+    @Test
+    void deveEnviarCampoCustomizadoNoCorpoDaCriacao() {
+        server.expect(requestTo(BASE_URL + "/issue"))
+                .andExpect(method(HttpMethod.POST))
+                .andExpect(org.springframework.test.web.client.match.MockRestRequestMatchers.content()
+                        .string(org.hamcrest.Matchers.containsString("\"customfield_10073\":\"agente-alpha\"")))
+                .andRespond(withSuccess("""
+                        {"id":"10001","key":"KAN-1"}
+                        """, MediaType.APPLICATION_JSON));
+
+        JiraIssueRequest request = new JiraIssueRequest(
+                new JiraIssueFields(new JiraFieldRef("KAN"), "Titulo", null, new JiraNameRef("Task"), null, null,
+                        java.util.Map.of("customfield_10073", "agente-alpha")));
+
+        client.criarIssue(request);
+
+        server.verify();
+    }
+
+    @Test
+    void deveListarOsCamposDaInstancia() {
+        server.expect(requestTo(BASE_URL + "/field"))
+                .andExpect(method(HttpMethod.GET))
+                .andRespond(withSuccess("""
+                        [{"id":"summary","name":"Resumo"},{"id":"customfield_10073","name":"Worker","custom":true}]
+                        """, MediaType.APPLICATION_JSON));
+
+        java.util.List<JiraCampoDto> resultado = client.listarCampos();
+
+        assertThat(resultado).extracting(JiraCampoDto::id).containsExactly("summary", "customfield_10073");
+        assertThat(resultado.get(1).name()).isEqualTo("Worker");
+    }
+
+    @Test
+    void deveCapturarCampoCustomizadoDaIssue() {
+        server.expect(requestTo(BASE_URL + "/issue/KAN-1"))
+                .andExpect(method(HttpMethod.GET))
+                .andRespond(withSuccess("""
+                        {"id":"10001","key":"KAN-1","fields":{"summary":"Titulo","status":{"name":"To Do"},"issuetype":{"name":"Task"},"project":{"key":"KAN"},"customfield_10073":"agente-alpha","created":"2026-08-05T10:00:00.000+0000","updated":"2026-08-05T10:00:00.000+0000"}}
+                        """, MediaType.APPLICATION_JSON));
+
+        JiraIssueDto resultado = client.buscarIssuePorChave("KAN-1");
+
+        assertThat(resultado.fields().textoDoCampo("customfield_10073")).isEqualTo("agente-alpha");
     }
 
     @Test

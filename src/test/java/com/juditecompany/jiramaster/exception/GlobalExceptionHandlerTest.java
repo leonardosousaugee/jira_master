@@ -39,6 +39,14 @@ class GlobalExceptionHandlerTest {
     }
 
     @Test
+    void deveRetornar422QuandoOCampoWorkerNaoExisteNaInstancia() {
+        ProblemDetail problema = handler.handleCampoWorkerNaoDisponivel(new CampoWorkerNaoDisponivelException());
+
+        assertThat(problema.getStatus()).isEqualTo(422);
+        assertThat(problema.getDetail()).contains("worker-field-id");
+    }
+
+    @Test
     void devePropagarStatusDaJiraApiException() {
         JiraApiException ex = new JiraApiException(HttpStatus.UNAUTHORIZED, "{\"errorMessages\":[\"token invalido\"]}");
 

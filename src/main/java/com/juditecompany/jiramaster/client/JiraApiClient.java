@@ -28,10 +28,29 @@ public class JiraApiClient {
                 .body(JiraProjectDto.class);
     }
 
-    public JiraSearchResponseDto buscarIssues(String jql) {
+    public java.util.List<JiraCampoDto> listarCampos() {
+        return restClient.get()
+                .uri("/field")
+                .retrieve()
+                .body(new org.springframework.core.ParameterizedTypeReference<java.util.List<JiraCampoDto>>() {
+                });
+    }
+
+    private static final String CAMPOS_DA_BUSCA =
+            "summary,description,status,priority,issuetype,project,created,updated";
+
+    /**
+     * A busca do Jira devolve so os campos projetados. {@code campoExtra} entra nessa lista para
+     * campo customizado, cujo id nao e fixo; nulo mantem a projecao padrao.
+     */
+    public JiraSearchResponseDto buscarIssues(String jql, String campoExtra) {
+        String campos = campoExtra == null || campoExtra.isBlank()
+                ? CAMPOS_DA_BUSCA
+                : CAMPOS_DA_BUSCA + "," + campoExtra;
+
         return restClient.get()
                 .uri(uriBuilder -> uriBuilder.path("/search/jql").queryParam("jql", jql)
-                        .queryParam("fields", "summary,description,status,priority,issuetype,project,created,updated")
+                        .queryParam("fields", campos)
                         .build())
                 .retrieve()
                 .body(JiraSearchResponseDto.class);

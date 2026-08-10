@@ -54,6 +54,11 @@ public class GlobalExceptionHandler {
         return problema;
     }
 
+    @ExceptionHandler(CampoWorkerNaoDisponivelException.class)
+    public ProblemDetail handleCampoWorkerNaoDisponivel(CampoWorkerNaoDisponivelException ex) {
+        return ProblemDetail.forStatusAndDetail(HttpStatus.UNPROCESSABLE_ENTITY, ex.getMessage());
+    }
+
     /**
      * Sem este handler qualquer corpo malformado cai no handler generico e vira um 500 mudo,
      * escondendo a causa real (encoding errado, JSON quebrado, tipo incompativel).

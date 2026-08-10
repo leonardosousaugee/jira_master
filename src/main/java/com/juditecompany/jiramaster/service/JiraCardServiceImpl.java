@@ -6,6 +6,7 @@ import com.juditecompany.jiramaster.config.JiraProperties;
 import com.juditecompany.jiramaster.config.TarifaProperties;
 import com.juditecompany.jiramaster.dto.request.*;
 import com.juditecompany.jiramaster.dto.response.*;
+import com.juditecompany.jiramaster.exception.CampoWorkerNaoDisponivelException;
 import com.juditecompany.jiramaster.exception.CardNotFoundException;
 import com.juditecompany.jiramaster.exception.JiraApiException;
 import com.juditecompany.jiramaster.exception.LinhaDeCustoNaoEncontradaException;
@@ -47,12 +48,17 @@ public class JiraCardServiceImpl implements JiraCardService {
     private final Clock relogio;
     private final Map<String, String> tipoDeSubtarefaPorProjeto = new ConcurrentHashMap<>();
     private final Map<String, ReentrantLock> locksPorCard = new ConcurrentHashMap<>();
+    // Optional vazio e um resultado legitimo — "a instancia nao tem o campo Worker" — e precisa
+    // ficar no cache tanto quanto o id encontrado, senao toda leitura repete o GET /field.
+    private final java.util.concurrent.atomic.AtomicReference<java.util.Optional<String>> workerFieldIdDescoberto =
+            new java.util.concurrent.atomic.AtomicReference<>();
 
     private static final BigDecimal POR_MILHAO = BigDecimal.valueOf(1_000_000);
     private static final DateTimeFormatter FORMATO_TS = DateTimeFormatter.ofPattern("yyyy-MM-dd'T'HH:mm");
     // BLOQUEADO e HOLD sao o mesmo estado. O fluxo do KAN so tem HOLD; os outros nomes existem
     // para o servico funcionar em board que chame a mesma etapa de outro jeito.
     private static final Set<String> NOMES_DE_HOLD = Set.of("HOLD", "BLOQUEADO", "BLOCKED", "BLOCK");
+    private static final String NOME_DO_CAMPO_WORKER = "Worker";
 
     public JiraCardServiceImpl(JiraApiClient jiraApiClient, JiraCardMapper cardMapper,
                                 AdfMapper adfMapper, JiraProperties jiraProperties,
@@ -73,10 +79,10 @@ public class JiraCardServiceImpl implements JiraCardService {
         Object descricaoAdf = request.descricao() != null ? adfMapper.textoParaAdf(request.descricao()) : null;
 
         var fields = new JiraIssueFields(new JiraFieldRef(projectKey), request.titulo(), descricaoAdf,
-                new JiraNameRef(tipoIssue), null, null);
+                new JiraNameRef(tipoIssue), null, null, campoWorker(request.worker()));
         JiraCreatedIssueDto criado = jiraApiClient.criarIssue(new JiraIssueRequest(fields));
 
-        return cardMapper.paraCardResponse(jiraApiClient.buscarIssuePorChave(criado.key()));
+        return cardMapper.paraCardResponse(jiraApiClient.buscarIssuePorChave(criado.key()), resolverWorkerFieldId());
     }
 
     @Override
@@ -84,14 +90,15 @@ public class JiraCardServiceImpl implements JiraCardService {
         String projectKey = projectKeyOverride != null ? projectKeyOverride : jiraProperties.getDefaultProjectKey();
         String jql = "project = " + projectKey + " AND statusCategory != Done ORDER BY created DESC";
 
-        return jiraApiClient.buscarIssues(jql).issues().stream()
-                .map(cardMapper::paraCardResumoResponse)
+        String workerFieldId = resolverWorkerFieldId();
+        return jiraApiClient.buscarIssues(jql, workerFieldId).issues().stream()
+                .map(issue -> cardMapper.paraCardResumoResponse(issue, workerFieldId))
                 .toList();
     }
 
     @Override
     public CardResponse buscarCardPorId(String issueKey) {
-        return cardMapper.paraCardResponse(buscarIssueOuLancarNaoEncontrado(issueKey));
+        return cardMapper.paraCardResponse(buscarIssueOuLancarNaoEncontrado(issueKey), resolverWorkerFieldId());
     }
 
     @Override
@@ -108,11 +115,12 @@ public class JiraCardServiceImpl implements JiraCardService {
                     : request.descricao();
             descricaoAdf = descricaoParaAdf(completa);
         }
-        var fields = new JiraIssueFields(null, request.titulo(), descricaoAdf, null, null, null);
+        var fields = new JiraIssueFields(null, request.titulo(), descricaoAdf, null, null, null,
+                campoWorker(request.worker()));
 
         atualizarIssueOuLancarNaoEncontrado(issueKey, fields);
 
-        return cardMapper.paraCardResponse(buscarIssueOuLancarNaoEncontrado(issueKey));
+        return cardMapper.paraCardResponse(buscarIssueOuLancarNaoEncontrado(issueKey), resolverWorkerFieldId());
     }
 
     @Override
@@ -156,7 +164,8 @@ public class JiraCardServiceImpl implements JiraCardService {
         if (filhos == null) {
             return List.of();
         }
-        return filhos.stream().map(cardMapper::paraCardResumoResponse).toList();
+        String workerFieldId = resolverWorkerFieldId();
+        return filhos.stream().map(filho -> cardMapper.paraCardResumoResponse(filho, workerFieldId)).toList();
     }
 
     @Override
@@ -349,11 +358,49 @@ public class JiraCardServiceImpl implements JiraCardService {
         String projectKey = jiraProperties.getDefaultProjectKey();
         Object descricaoAdf = request.descricao() != null ? adfMapper.textoParaAdf(request.descricao()) : null;
         var fields = new JiraIssueFields(new JiraFieldRef(projectKey), request.titulo(), descricaoAdf,
-                JiraNameRef.porId(resolverTipoDeSubtarefaId(projectKey)), new JiraFieldRef(issueKeyPai), null);
+                JiraNameRef.porId(resolverTipoDeSubtarefaId(projectKey)), new JiraFieldRef(issueKeyPai), null,
+                campoWorker(request.worker()));
 
         JiraCreatedIssueDto criado = jiraApiClient.criarIssue(new JiraIssueRequest(fields));
 
-        return cardMapper.paraCardResponse(jiraApiClient.buscarIssuePorChave(criado.key()));
+        return cardMapper.paraCardResponse(jiraApiClient.buscarIssuePorChave(criado.key()), resolverWorkerFieldId());
+    }
+
+    /**
+     * Worker nulo devolve mapa vazio: o campo nao entra no corpo e o valor atual do card fica
+     * intacto. Worker informado numa instancia sem o campo falha alto — ver
+     * {@link CampoWorkerNaoDisponivelException}.
+     */
+    private Map<String, Object> campoWorker(String worker) {
+        if (worker == null) {
+            return Map.of();
+        }
+        String fieldId = resolverWorkerFieldId();
+        if (fieldId == null) {
+            throw new CampoWorkerNaoDisponivelException();
+        }
+        return Map.of(fieldId, worker);
+    }
+
+    /**
+     * O id do campo customizado varia por instancia do Jira, entao ele e descoberto em runtime
+     * casando pelo nome visivel ("Worker"), com o id fixo em configuracao como escape — mesmo
+     * arranjo do tipo de subtarefa. Nulo significa que a instancia nao tem o campo.
+     */
+    private String resolverWorkerFieldId() {
+        String configurado = jiraProperties.getWorkerFieldId();
+        if (configurado != null && !configurado.isBlank()) {
+            return configurado;
+        }
+        java.util.Optional<String> emCache = workerFieldIdDescoberto.get();
+        if (emCache == null) {
+            emCache = jiraApiClient.listarCampos().stream()
+                    .filter(campo -> NOME_DO_CAMPO_WORKER.equalsIgnoreCase(campo.name()))
+                    .map(JiraCampoDto::id)
+                    .findFirst();
+            workerFieldIdDescoberto.set(emCache);
+        }
+        return emCache.orElse(null);
     }
 
     /**

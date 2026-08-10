@@ -2,5 +2,7 @@ package com.juditecompany.jiramaster.dto.request;
 
 import jakarta.validation.constraints.NotBlank;
 
-public record CriarCardRequest(@NotBlank String titulo, String descricao, String tipoIssue, String projectKey) {
+/** {@code worker} e opcional: nulo deixa o campo Worker do card em branco. */
+public record CriarCardRequest(@NotBlank String titulo, String descricao, String tipoIssue, String projectKey,
+                               String worker) {
 }

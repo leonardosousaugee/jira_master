@@ -11,6 +11,9 @@ import java.util.List;
  * {@code custos}. {@code custoTotal} e somado na leitura e e nulo quando nao ha nenhuma linha:
  * zero e "nao medido" sao coisas diferentes, e mentir para baixo no numero que autoriza gasto e o
  * pior erro possivel aqui.
+ *
+ * <p>{@code worker} e o campo customizado Worker do Jira: quem executa o card. Vem nulo quando o
+ * campo nao esta configurado na instancia ou o card nao tem valor.
  */
 public record CardResponse(
         String issueKey,
@@ -20,6 +23,7 @@ public record CardResponse(
         String prioridade,
         String tipoIssue,
         String projectKey,
+        String worker,
         Instant criadoEm,
         Instant atualizadoEm,
         BigDecimal custoTotal,

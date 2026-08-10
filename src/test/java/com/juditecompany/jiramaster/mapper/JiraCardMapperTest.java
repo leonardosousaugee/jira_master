@@ -3,6 +3,7 @@ package com.juditecompany.jiramaster.mapper;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.juditecompany.jiramaster.client.dto.*;
 import com.juditecompany.jiramaster.dto.response.CardResponse;
+import com.juditecompany.jiramaster.dto.response.CardResumoResponse;
 import com.juditecompany.jiramaster.dto.response.ComentarioResponse;
 import com.juditecompany.jiramaster.dto.response.TransicaoResponse;
 import com.juditecompany.jiramaster.ledger.LedgerDeCusto;
@@ -28,7 +29,7 @@ class JiraCardMapperTest {
                 "2026-08-05T10:00:00.000+0000", "2026-08-05T11:00:00.000+0000");
         var issue = new JiraIssueDto("10001", "KAN-1", fields);
 
-        CardResponse resultado = mapper.paraCardResponse(issue);
+        CardResponse resultado = mapper.paraCardResponse(issue, null);
 
         assertThat(resultado.issueKey()).isEqualTo("KAN-1");
         assertThat(resultado.titulo()).isEqualTo("Titulo");
@@ -38,6 +39,51 @@ class JiraCardMapperTest {
         assertThat(resultado.tipoIssue()).isEqualTo("Task");
         assertThat(resultado.projectKey()).isEqualTo("KAN");
         assertThat(resultado.criadoEm()).isEqualTo(Instant.parse("2026-08-05T10:00:00Z"));
+    }
+
+    @Test
+    void deveMapearWorkerDoCampoCustomizado() throws Exception {
+        JiraIssueDto issue = issueComWorker("\"agente-alpha\"");
+
+        CardResponse resultado = mapper.paraCardResponse(issue, "customfield_10073");
+
+        assertThat(resultado.worker()).isEqualTo("agente-alpha");
+    }
+
+    @Test
+    void deveDevolverWorkerNuloQuandoOIdDoCampoNaoFoiResolvido() throws Exception {
+        JiraIssueDto issue = issueComWorker("\"agente-alpha\"");
+
+        CardResponse resultado = mapper.paraCardResponse(issue, null);
+
+        assertThat(resultado.worker()).isNull();
+    }
+
+    @Test
+    void deveDevolverWorkerNuloQuandoOCampoVemVazio() throws Exception {
+        JiraIssueDto issue = issueComWorker("\"   \"");
+
+        CardResponse resultado = mapper.paraCardResponse(issue, "customfield_10073");
+
+        assertThat(resultado.worker()).isNull();
+    }
+
+    @Test
+    void deveMapearWorkerNoResumoDoCard() throws Exception {
+        JiraIssueDto issue = issueComWorker("\"agente-alpha\"");
+
+        CardResumoResponse resultado = mapper.paraCardResumoResponse(issue, "customfield_10073");
+
+        assertThat(resultado.worker()).isEqualTo("agente-alpha");
+    }
+
+    private JiraIssueDto issueComWorker(String valorJson) throws Exception {
+        return objectMapper.readValue("""
+                {"id":"10001","key":"KAN-1","fields":{"summary":"Titulo","status":{"name":"To Do"},
+                "priority":{"name":"Medium"},"issuetype":{"name":"Task"},"project":{"key":"KAN"},
+                "customfield_10073":%s,
+                "created":"2026-08-05T10:00:00.000+0000","updated":"2026-08-05T10:00:00.000+0000"}}
+                """.formatted(valorJson), JiraIssueDto.class);
     }
 
     @Test

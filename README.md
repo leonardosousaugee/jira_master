@@ -17,6 +17,7 @@ traduz, valida e mantém as invariantes que o Jira sozinho não garante.
 - [Como rodar](#como-rodar)
 - [Configuração](#configuração)
 - [Endpoints](#endpoints)
+- [Worker — quem executa o card](#worker--quem-executa-o-card)
 - [Ledger de custo](#ledger-de-custo)
 - [HOLD — o kill switch da árvore](#hold--o-kill-switch-da-árvore)
 - [Erros](#erros)
@@ -97,6 +98,7 @@ Variáveis lidas do `.env` na raiz (via `spring-dotenv`) ou do ambiente. O `.env
 | `JIRA_API_TOKEN` | sim | — | API token da conta ([gerar aqui](https://id.atlassian.com/manage-profile/security/api-tokens)) |
 | `JIRA_DEFAULT_PROJECT_KEY` | não | `KAN` | Projeto usado quando a requisição não informa um |
 | `JIRA_SUBTASK_ISSUE_TYPE_ID` | não | vazio | Id do tipo de subtarefa. Em branco, é descoberto em runtime lendo os tipos do projeto — preencha só quando o projeto tem mais de um tipo de subtarefa e a descoberta escolhe o errado |
+| `JIRA_WORKER_FIELD_ID` | não | vazio | Id do campo customizado Worker, ex. `customfield_10073`. Em branco, é descoberto em runtime lendo os campos da instância e casando pelo nome `Worker` — preencha só quando o campo foi renomeado ou existe mais de um com esse nome |
 | `SERVER_PORT` | não | `8080` | Porta HTTP |
 
 As três primeiras são validadas na subida: faltando qualquer uma, a aplicação não inicia.
@@ -116,7 +118,7 @@ Base: `/api/cards`
 | `POST` | `/api/cards` | Cria um card | `201` |
 | `GET` | `/api/cards/abertos?projectKey=` | Lista cards não concluídos. Sem `projectKey`, usa o projeto padrão | `200` |
 | `GET` | `/api/cards/{issueKey}` | Lê um card, já com o custo separado da descrição | `200` |
-| `PATCH` | `/api/cards/{issueKey}` | Edita título e/ou descrição | `200` |
+| `PATCH` | `/api/cards/{issueKey}` | Edita título, descrição e/ou worker | `200` |
 | `PATCH` | `/api/cards/{issueKey}/prioridade` | Altera a prioridade | `204` |
 
 ### Fluxo
@@ -155,7 +157,32 @@ Criar um card:
 ```bash
 curl -X POST http://localhost:8080/api/cards \
   -H 'Content-Type: application/json; charset=utf-8' \
-  -d '{"titulo":"Migrar autenticação","descricao":"Trocar basic auth por OAuth","tipoIssue":"Tarefa"}'
+  -d '{"titulo":"Migrar autenticação","descricao":"Trocar basic auth por OAuth","tipoIssue":"Tarefa","worker":"agente-alpha"}'
+```
+
+## Worker — quem executa o card
+
+`worker` é o campo customizado `Worker` do Jira, exposto como campo de primeira classe da API:
+aceito em `POST /api/cards`, `PATCH /api/cards/{issueKey}` e `POST /api/cards/{issueKey}/subcards`,
+e devolvido em `CardResponse` e na listagem de cards abertos.
+
+O id do campo muda de instância para instância, então ele é descoberto em runtime pelo nome
+(`GET /field`, casando por `Worker`, sem diferenciar maiúsculas) e guardado em cache no processo —
+uma consulta por subida, não uma por card. `JIRA_WORKER_FIELD_ID` fixa o id e pula a descoberta.
+
+Duas regras que valem a pena saber antes de integrar:
+
+- **Na leitura, ausente é `null`.** Campo não configurado na instância, valor nulo ou string em
+  branco — os três viram `worker: null`. Nenhum deles derruba a requisição.
+- **Na escrita, `null` não toca no valor; string vazia limpa.** E mandar um `worker` numa instância
+  que não tem o campo devolve `422` em vez de criar o card sem dono: um card gravado sem o worker
+  que o chamador pediu esconde a perda até o momento em que ninguém mais sabe de quem era o
+  trabalho.
+
+```bash
+curl -X PATCH http://localhost:8080/api/cards/KAN-42 \
+  -H 'Content-Type: application/json; charset=utf-8' \
+  -d '{"worker":"agente-beta"}'
 ```
 
 Registrar o custo de uma execução — os quatro contadores vão **separados**, sem soma e sem
@@ -259,6 +286,7 @@ chamada.
 | Corpo ilegível (JSON quebrado, encoding errado) | `400` | — |
 | Modelo sem tarifa configurada | `422` | `modelosConhecidos` |
 | Tipo de subtarefa não encontrado no projeto | `422` | `tiposDisponiveis` |
+| `worker` informado numa instância sem o campo Worker | `422` | — |
 | Erro repassado pela API do Jira | status do Jira | — |
 | Qualquer outra falha | `500` | — |
 

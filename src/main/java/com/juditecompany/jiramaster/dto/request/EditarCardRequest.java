@@ -1,4 +1,8 @@
 package com.juditecompany.jiramaster.dto.request;
 
-public record EditarCardRequest(String titulo, String descricao) {
+/**
+ * Campo nulo nao e tocado — vale para {@code titulo}, {@code descricao} e {@code worker}. Para
+ * limpar o Worker, mande string vazia.
+ */
+public record EditarCardRequest(String titulo, String descricao, String worker) {
 }
