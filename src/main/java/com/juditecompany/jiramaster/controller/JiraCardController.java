@@ -41,7 +41,7 @@ public class JiraCardController {
 
     @PatchMapping("/{issueKey}")
     public ResponseEntity<CardResponse> editarCard(@PathVariable String issueKey,
-                                                     @RequestBody EditarCardRequest request) {
+                                                     @Valid @RequestBody EditarCardRequest request) {
         return ResponseEntity.ok(service.editarCard(issueKey, request));
     }
 

@@ -13,6 +13,7 @@ import com.juditecompany.jiramaster.exception.CardNotFoundException;
 import com.juditecompany.jiramaster.exception.JiraApiException;
 import com.juditecompany.jiramaster.exception.LinhaDeCustoNaoEncontradaException;
 import com.juditecompany.jiramaster.exception.ModeloDesconhecidoException;
+import com.juditecompany.jiramaster.exception.ProjectKeyInvalidoException;
 import com.juditecompany.jiramaster.exception.SubtaskIssueTypeNotFoundException;
 import com.juditecompany.jiramaster.exception.TransitionNotFoundException;
 import com.juditecompany.jiramaster.ledger.LedgerDeCusto;
@@ -55,6 +56,11 @@ public class JiraCardServiceImpl implements JiraCardService {
     private final java.util.concurrent.atomic.AtomicReference<java.util.Optional<String>> workerFieldIdDescoberto =
             new java.util.concurrent.atomic.AtomicReference<>();
 
+    // A chave entra concatenada na JQL, entao o formato e barreira de seguranca, nao cortesia:
+    // so o que o Jira aceita como chave de projeto passa, e isso nao tem como virar clausula.
+    private static final java.util.regex.Pattern FORMATO_PROJECT_KEY =
+            java.util.regex.Pattern.compile("[A-Z][A-Z0-9]*");
+
     private static final BigDecimal POR_MILHAO = BigDecimal.valueOf(1_000_000);
     private static final DateTimeFormatter FORMATO_TS = DateTimeFormatter.ofPattern("yyyy-MM-dd'T'HH:mm");
     // BLOQUEADO e HOLD sao o mesmo estado. O fluxo do KAN so tem HOLD; os outros nomes existem
@@ -90,6 +96,9 @@ public class JiraCardServiceImpl implements JiraCardService {
     @Override
     public List<CardResumoResponse> lerCardsEmAberto(String projectKeyOverride) {
         String projectKey = projectKeyOverride != null ? projectKeyOverride : jiraProperties.getDefaultProjectKey();
+        if (!FORMATO_PROJECT_KEY.matcher(projectKey).matches()) {
+            throw new ProjectKeyInvalidoException(projectKey);
+        }
         String jql = "project = " + projectKey + " AND statusCategory != Done ORDER BY created DESC";
 
         String workerFieldId = resolverWorkerFieldId();

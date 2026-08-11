@@ -1,12 +1,17 @@
 package com.juditecompany.jiramaster.exception;
 
 import org.junit.jupiter.api.Test;
+import org.springframework.http.HttpHeaders;
+import org.springframework.http.HttpMethod;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ProblemDetail;
 import org.springframework.http.converter.HttpMessageNotReadableException;
 import org.springframework.validation.BindingResult;
 import org.springframework.validation.FieldError;
+import org.springframework.web.HttpRequestMethodNotSupportedException;
 import org.springframework.web.bind.MethodArgumentNotValidException;
+import org.springframework.web.servlet.NoHandlerFoundException;
+import org.springframework.web.servlet.resource.NoResourceFoundException;
 
 import java.util.List;
 
@@ -76,6 +81,45 @@ class GlobalExceptionHandlerTest {
         ProblemDetail problema = handler.handleValidacao(ex);
 
         assertThat(problema.getStatus()).isEqualTo(400);
+    }
+
+    @Test
+    void deveRetornar400ComAChaveRecusadaQuandoProjectKeyForInvalido() {
+        ProblemDetail problema = handler.handleProjectKeyInvalido(
+                new ProjectKeyInvalidoException("KAN OR project is not null"));
+
+        assertThat(problema.getStatus()).isEqualTo(400);
+        assertThat(problema.getDetail()).contains("KAN OR project is not null");
+    }
+
+    @Test
+    void deveRetornar405ComOsMetodosAceitosQuandoOVerboNaoBater() {
+        HttpRequestMethodNotSupportedException ex =
+                new HttpRequestMethodNotSupportedException("GET", List.of("POST"));
+
+        ProblemDetail problema = handler.handleMetodoNaoSuportado(ex);
+
+        assertThat(problema.getStatus()).isEqualTo(405);
+        assertThat(problema.getDetail()).contains("GET");
+        assertThat(problema.getProperties()).containsEntry("metodosSuportados", List.of("POST"));
+    }
+
+    @Test
+    void deveRetornar404QuandoNaoHouverRecursoNoCaminho() {
+        ProblemDetail problema = handler.handleRecursoNaoEncontrado(
+                new NoResourceFoundException(HttpMethod.GET, "/api/cardz"));
+
+        assertThat(problema.getStatus()).isEqualTo(404);
+        assertThat(problema.getDetail()).contains("/api/cardz");
+    }
+
+    @Test
+    void deveRetornar404QuandoNenhumHandlerCasarComARota() {
+        ProblemDetail problema = handler.handleRotaSemHandler(
+                new NoHandlerFoundException("GET", "/api/cardz", HttpHeaders.EMPTY));
+
+        assertThat(problema.getStatus()).isEqualTo(404);
+        assertThat(problema.getDetail()).contains("/api/cardz");
     }
 
     @Test

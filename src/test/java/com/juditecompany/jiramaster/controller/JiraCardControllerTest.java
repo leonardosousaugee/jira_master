@@ -119,4 +119,34 @@ class JiraCardControllerTest {
 
         verify(service, org.mockito.Mockito.never()).alterarEtapaCard(eq("KAN-1"), any());
     }
+
+    @Test
+    void deveResponder405QuandoOVerboNaoExisteNaRota() throws Exception {
+        mockMvc.perform(get("/api/cards"))
+                .andExpect(status().isMethodNotAllowed())
+                .andExpect(jsonPath("$.detail").value(org.hamcrest.Matchers.containsString("GET")))
+                .andExpect(jsonPath("$.metodosSuportados[0]").value("POST"));
+    }
+
+    @Test
+    void deveRecusarTituloEmBrancoNaEdicaoAntesDeChamarOJira() throws Exception {
+        mockMvc.perform(patch("/api/cards/KAN-1")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"titulo\":\"   \"}"))
+                .andExpect(status().isBadRequest());
+
+        verify(service, org.mockito.Mockito.never()).editarCard(eq("KAN-1"), any());
+    }
+
+    @Test
+    void deveAceitarEdicaoQueSoMexeNaDescricao() throws Exception {
+        CardResponse resposta = new CardResponse("KAN-1", "Titulo", "Nova", "To Do", "Medium", "Task", "KAN", null,
+                Instant.parse("2026-08-05T10:00:00Z"), Instant.parse("2026-08-05T10:00:00Z"), null, List.of(), 0);
+        when(service.editarCard(eq("KAN-1"), any())).thenReturn(resposta);
+
+        mockMvc.perform(patch("/api/cards/KAN-1")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"descricao\":\"Nova\"}"))
+                .andExpect(status().isOk());
+    }
 }

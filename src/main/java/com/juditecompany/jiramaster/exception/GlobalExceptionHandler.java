@@ -2,13 +2,17 @@ package com.juditecompany.jiramaster.exception;
 
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import org.springframework.http.HttpMethod;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ProblemDetail;
 import org.springframework.http.converter.HttpMessageNotReadableException;
 import org.springframework.validation.FieldError;
+import org.springframework.web.HttpRequestMethodNotSupportedException;
 import org.springframework.web.bind.MethodArgumentNotValidException;
 import org.springframework.web.bind.annotation.ExceptionHandler;
 import org.springframework.web.bind.annotation.RestControllerAdvice;
+import org.springframework.web.servlet.NoHandlerFoundException;
+import org.springframework.web.servlet.resource.NoResourceFoundException;
 
 import java.util.List;
 import java.util.stream.Collectors;
@@ -75,6 +79,11 @@ public class GlobalExceptionHandler {
         return ProblemDetail.forStatusAndDetail(HttpStatus.UNPROCESSABLE_ENTITY, ex.getMessage());
     }
 
+    @ExceptionHandler(ProjectKeyInvalidoException.class)
+    public ProblemDetail handleProjectKeyInvalido(ProjectKeyInvalidoException ex) {
+        return ProblemDetail.forStatusAndDetail(HttpStatus.BAD_REQUEST, ex.getMessage());
+    }
+
     /**
      * Sem este handler qualquer corpo malformado cai no handler generico e vira um 500 mudo,
      * escondendo a causa real (encoding errado, JSON quebrado, tipo incompativel).
@@ -94,6 +103,33 @@ public class GlobalExceptionHandler {
         ProblemDetail problema = ProblemDetail.forStatusAndDetail(HttpStatus.BAD_REQUEST, "Requisicao invalida");
         problema.setProperty("erros", erros);
         return problema;
+    }
+
+    /**
+     * Erro de dispatch do MVC nao e falha interna. Sem os tres handlers abaixo o catch-all engole
+     * verbo errado e rota inexistente e devolve 500 "Erro interno inesperado" — o chamador conclui
+     * que o servico quebrou quando quem errou foi a requisicao.
+     */
+    @ExceptionHandler(HttpRequestMethodNotSupportedException.class)
+    public ProblemDetail handleMetodoNaoSuportado(HttpRequestMethodNotSupportedException ex) {
+        ProblemDetail problema = ProblemDetail.forStatusAndDetail(HttpStatus.METHOD_NOT_ALLOWED,
+                "Metodo " + ex.getMethod() + " nao e aceito nesta rota.");
+        problema.setProperty("metodosSuportados",
+                ex.getSupportedHttpMethods() == null ? List.of()
+                        : ex.getSupportedHttpMethods().stream().map(HttpMethod::name).toList());
+        return problema;
+    }
+
+    @ExceptionHandler(NoResourceFoundException.class)
+    public ProblemDetail handleRecursoNaoEncontrado(NoResourceFoundException ex) {
+        return ProblemDetail.forStatusAndDetail(HttpStatus.NOT_FOUND,
+                "Nenhum recurso em /" + ex.getResourcePath());
+    }
+
+    @ExceptionHandler(NoHandlerFoundException.class)
+    public ProblemDetail handleRotaSemHandler(NoHandlerFoundException ex) {
+        return ProblemDetail.forStatusAndDetail(HttpStatus.NOT_FOUND,
+                "Nenhuma rota para " + ex.getHttpMethod() + " " + ex.getRequestURL());
     }
 
     @ExceptionHandler(Exception.class)

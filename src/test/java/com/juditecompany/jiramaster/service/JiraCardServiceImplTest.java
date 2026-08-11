@@ -19,6 +19,7 @@ import com.juditecompany.jiramaster.exception.CardNotFoundException;
 import com.juditecompany.jiramaster.exception.JiraApiException;
 import com.juditecompany.jiramaster.exception.LinhaDeCustoNaoEncontradaException;
 import com.juditecompany.jiramaster.exception.ModeloDesconhecidoException;
+import com.juditecompany.jiramaster.exception.ProjectKeyInvalidoException;
 import com.juditecompany.jiramaster.exception.SubtaskIssueTypeNotFoundException;
 import com.juditecompany.jiramaster.exception.TransitionNotFoundException;
 import com.juditecompany.jiramaster.ledger.LedgerDeCusto;
@@ -279,6 +280,31 @@ class JiraCardServiceImplTest {
         service.lerCardsEmAberto("OUTRO");
 
         verify(jiraApiClient).buscarIssues(eq("project = OUTRO AND statusCategory != Done ORDER BY created DESC"), any());
+    }
+
+    @ParameterizedTest
+    @ValueSource(strings = {
+            "KAN OR project is not null",
+            "KAN\" OR project != \"ZZZ",
+            "kan",
+            "1KAN",
+            "KAN-1",
+            ""
+    })
+    void deveRecusarProjectKeyForaDoFormatoSemChegarNaJql(String projectKeyMalicioso) {
+        assertThatThrownBy(() -> service.lerCardsEmAberto(projectKeyMalicioso))
+                .isInstanceOf(ProjectKeyInvalidoException.class);
+
+        verify(jiraApiClient, never()).buscarIssues(anyString(), any());
+    }
+
+    @Test
+    void deveAceitarProjectKeyComLetrasEDigitos() {
+        when(jiraApiClient.buscarIssues(anyString(), any())).thenReturn(new JiraSearchResponseDto(List.of()));
+
+        service.lerCardsEmAberto("PROJ2");
+
+        verify(jiraApiClient).buscarIssues(eq("project = PROJ2 AND statusCategory != Done ORDER BY created DESC"), any());
     }
 
     @Test
