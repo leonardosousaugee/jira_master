@@ -8,6 +8,7 @@ import com.juditecompany.jiramaster.custo.Contadores;
 import com.juditecompany.jiramaster.dto.request.*;
 import com.juditecompany.jiramaster.dto.response.*;
 import com.juditecompany.jiramaster.exception.CampoWorkerNaoDisponivelException;
+import com.juditecompany.jiramaster.exception.CardEmHoldException;
 import com.juditecompany.jiramaster.exception.CardNotFoundException;
 import com.juditecompany.jiramaster.exception.JiraApiException;
 import com.juditecompany.jiramaster.exception.LinhaDeCustoNaoEncontradaException;
@@ -332,8 +333,19 @@ public class JiraCardServiceImpl implements JiraCardService {
                 .toList();
     }
 
+    /**
+     * HOLD e porta de mao unica: quem entrou nele so sai pela mao de uma pessoa, no board. Sem esta
+     * trava o proprio agente que foi parado pode se tirar do HOLD na tick seguinte — o kill switch
+     * viraria sugestao. A checagem e da etapa de ORIGEM, nao do destino: qualquer destino a partir
+     * de HOLD e recusado, inclusive o proprio HOLD.
+     */
     @Override
     public void alterarEtapaCard(String issueKey, AlterarEtapaRequest request) {
+        String etapaAtual = buscarIssueOuLancarNaoEncontrado(issueKey).fields().status().name();
+        if (ehHold(etapaAtual)) {
+            throw new CardEmHoldException(issueKey, etapaAtual, request.etapaDestino());
+        }
+
         List<JiraTransitionDto> transicoes = jiraApiClient.buscarTransicoes(issueKey).transitions();
 
         JiraTransitionDto transicaoEncontrada = transicoes.stream()

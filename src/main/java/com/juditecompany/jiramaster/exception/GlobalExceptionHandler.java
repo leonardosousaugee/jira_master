@@ -30,6 +30,17 @@ public class GlobalExceptionHandler {
         return problema;
     }
 
+    /**
+     * 409: a requisicao e valida, o estado atual do card e que a recusa. O nome da etapa vai como
+     * campo proprio para o chamador nao ter que extrair da mensagem.
+     */
+    @ExceptionHandler(CardEmHoldException.class)
+    public ProblemDetail handleCardEmHold(CardEmHoldException ex) {
+        ProblemDetail problema = ProblemDetail.forStatusAndDetail(HttpStatus.CONFLICT, ex.getMessage());
+        problema.setProperty("etapaAtual", ex.getEtapaAtual());
+        return problema;
+    }
+
     @ExceptionHandler(JiraApiException.class)
     public ProblemDetail handleJiraApiException(JiraApiException ex) {
         return ProblemDetail.forStatusAndDetail(HttpStatus.valueOf(ex.getStatus().value()), ex.getMessage());

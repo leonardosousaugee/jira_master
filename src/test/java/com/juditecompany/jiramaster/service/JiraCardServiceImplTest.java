@@ -14,6 +14,7 @@ import com.juditecompany.jiramaster.dto.response.CardResumoResponse;
 import com.juditecompany.jiramaster.dto.response.CustoArvoreResponse;
 import com.juditecompany.jiramaster.dto.response.ResultadoHoldResponse;
 import com.juditecompany.jiramaster.exception.CampoWorkerNaoDisponivelException;
+import com.juditecompany.jiramaster.exception.CardEmHoldException;
 import com.juditecompany.jiramaster.exception.CardNotFoundException;
 import com.juditecompany.jiramaster.exception.JiraApiException;
 import com.juditecompany.jiramaster.exception.LinhaDeCustoNaoEncontradaException;
@@ -26,6 +27,8 @@ import com.juditecompany.jiramaster.mapper.AdfMapper;
 import com.juditecompany.jiramaster.mapper.JiraCardMapper;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.params.ParameterizedTest;
+import org.junit.jupiter.params.provider.ValueSource;
 import org.mockito.InOrder;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
@@ -318,6 +321,7 @@ class JiraCardServiceImplTest {
 
     @Test
     void deveAlterarEtapaQuandoNomeCasaComTransicaoDisponivel() {
+        when(jiraApiClient.buscarIssuePorChave("KAN-1")).thenReturn(issueDeExemplo("KAN-1", "A fazer"));
         when(jiraApiClient.buscarTransicoes("KAN-1")).thenReturn(new JiraTransitionsResponseDto(
                 List.of(new JiraTransitionDto("31", "Start Progress", new JiraTransitionToDto("In Progress")))));
 
@@ -328,11 +332,54 @@ class JiraCardServiceImplTest {
 
     @Test
     void deveLancarTransitionNotFoundQuandoNomeNaoCasaComNenhumaTransicao() {
+        when(jiraApiClient.buscarIssuePorChave("KAN-1")).thenReturn(issueDeExemplo("KAN-1", "A fazer"));
         when(jiraApiClient.buscarTransicoes("KAN-1")).thenReturn(new JiraTransitionsResponseDto(
                 List.of(new JiraTransitionDto("31", "Start Progress", new JiraTransitionToDto("In Progress")))));
 
         assertThatThrownBy(() -> service.alterarEtapaCard("KAN-1", new AlterarEtapaRequest("Bloqueado")))
                 .isInstanceOf(TransitionNotFoundException.class);
+    }
+
+    @ParameterizedTest
+    @ValueSource(strings = {"HOLD", "Bloqueado", "BLOCKED", " block "})
+    void naoDeveMoverCardCujaEtapaDeOrigemEHold(String etapaDeOrigem) {
+        when(jiraApiClient.buscarIssuePorChave("KAN-1")).thenReturn(issueDeExemplo("KAN-1", etapaDeOrigem));
+
+        assertThatThrownBy(() -> service.alterarEtapaCard("KAN-1", new AlterarEtapaRequest("Em andamento")))
+                .isInstanceOf(CardEmHoldException.class)
+                .hasMessageContaining("KAN-1");
+
+        // Recusa antes de qualquer chamada de escrita: nem lista transicao, nem executa.
+        verify(jiraApiClient, never()).buscarTransicoes(anyString());
+        verify(jiraApiClient, never()).executarTransicao(anyString(), anyString());
+    }
+
+    @Test
+    void naoDeveMoverCardEmHoldNemQuandoODestinoEOProprioHold() {
+        when(jiraApiClient.buscarIssuePorChave("KAN-1")).thenReturn(issueDeExemplo("KAN-1", "HOLD"));
+
+        assertThatThrownBy(() -> service.alterarEtapaCard("KAN-1", new AlterarEtapaRequest("HOLD")))
+                .isInstanceOf(CardEmHoldException.class);
+    }
+
+    @Test
+    void deveLancarCardNotFoundAoAlterarEtapaDeCardInexistente() {
+        when(jiraApiClient.buscarIssuePorChave("KAN-404"))
+                .thenThrow(new JiraApiException(HttpStatus.NOT_FOUND, "nao encontrado"));
+
+        assertThatThrownBy(() -> service.alterarEtapaCard("KAN-404", new AlterarEtapaRequest("Em andamento")))
+                .isInstanceOf(CardNotFoundException.class);
+    }
+
+    /** A trava e do /etapa; o kill switch continua podendo colocar em HOLD um card ja em HOLD. */
+    @Test
+    void holdDaArvoreNaoEBloqueadoPelaTrava() {
+        when(jiraApiClient.buscarIssuePorChave("KAN-1")).thenReturn(issueDeExemplo("KAN-1", "HOLD"));
+
+        var resultado = service.moverArvoreParaHold("KAN-1");
+
+        assertThat(resultado.resultados()).singleElement()
+                .satisfies(card -> assertThat(card.movido()).isTrue());
     }
 
     @Test

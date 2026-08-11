@@ -120,6 +120,23 @@ engolida** — a resposta diz quais moveram e quais não, com o motivo, e não h
 precisa ser útil justamente quando as coisas já estão dando errado, e nessa hora saber o estado real
 vale mais do que uma resposta binária.
 
+### Você não sai do HOLD
+
+Se o seu card estiver em HOLD, `POST /api/cards/{issueKey}/etapa` devolve `409` para **qualquer**
+destino — o serviço olha a etapa de origem antes de qualquer outra coisa:
+
+```json
+{ "status": 409, "detail": "O card KAN-42 esta em \"HOLD\" ...", "etapaAtual": "HOLD" }
+```
+
+Não tente contornar: não existe endpoint de liberação, e criar card novo para continuar o mesmo
+trabalho é a mesma violação com outro nome. HOLD significa que uma pessoa decidiu que este trabalho
+para, e só uma pessoa desfaz isso, direto no board do Jira.
+
+Recebeu `409` com `etapaAtual` de HOLD no meio de uma execução: **pare**. Registre o custo do que já
+gastou (`POST /custos` continua aceito — parar não apaga a contabilidade), comente no card onde você
+estava, e encerre a sessão.
+
 ---
 
 ## Subtarefas

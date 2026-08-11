@@ -47,6 +47,16 @@ class GlobalExceptionHandlerTest {
     }
 
     @Test
+    void deveRetornar409ComAEtapaAtualQuandoOCardEstaEmHold() {
+        ProblemDetail problema = handler.handleCardEmHold(
+                new CardEmHoldException("KAN-1", "HOLD", "Em andamento"));
+
+        assertThat(problema.getStatus()).isEqualTo(409);
+        assertThat(problema.getProperties()).containsEntry("etapaAtual", "HOLD");
+        assertThat(problema.getDetail()).contains("KAN-1").contains("Em andamento");
+    }
+
+    @Test
     void devePropagarStatusDaJiraApiException() {
         JiraApiException ex = new JiraApiException(HttpStatus.UNAUTHORIZED, "{\"errorMessages\":[\"token invalido\"]}");
 

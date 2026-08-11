@@ -130,7 +130,7 @@ Base: `/api/cards`
 | Método | Rota | O que faz | Sucesso |
 |---|---|---|---|
 | `GET` | `/api/cards/{issueKey}/transicoes` | Lista as transições possíveis a partir do estado atual | `200` |
-| `POST` | `/api/cards/{issueKey}/etapa` | Move o card para a etapa informada, por nome | `204` |
+| `POST` | `/api/cards/{issueKey}/etapa` | Move o card para a etapa informada, por nome. Recusa com `409` se o card estiver em HOLD | `204` |
 | `POST` | `/api/cards/{issueKey}/hold` | Move o card **e toda a sua árvore** para HOLD | `200` |
 
 ### Sub-cards
@@ -338,6 +338,28 @@ As decisões que sustentam esse formato:
   entrada por card com `movido` e uma `observacao` explicando o motivo — este endpoint precisa ser
   útil justamente quando as coisas já estão dando errado, e nessa hora saber quais cards pararam
   vale mais que uma resposta binária.
+- **HOLD é porta de mão única: quem entrou não sai pela API.** `POST /api/cards/{issueKey}/etapa`
+  olha a etapa de **origem** e devolve `409` com `etapaAtual` quando ela é HOLD — qualquer destino,
+  inclusive o próprio HOLD. Sem isso, o agente que acabou de ser parado se tira do HOLD no tick
+  seguinte e o kill switch vira sugestão. **A liberação é manual, no board do Jira** — é a única
+  ação do fluxo que exige uma pessoa, de propósito.
+
+```bash
+curl -X POST http://localhost:8080/api/cards/KAN-42/etapa \
+  -H 'Content-Type: application/json' -d '{"etapaDestino":"Em andamento"}'
+```
+
+```json
+{
+  "status": 409,
+  "detail": "O card KAN-42 esta em \"HOLD\" e nao pode ser movido para \"Em andamento\". HOLD so e liberado manualmente, no board do Jira.",
+  "etapaAtual": "HOLD"
+}
+```
+
+A trava é do `/etapa` e só dele: `POST /hold` continua funcionando sobre um card já em HOLD (responde
+`movido: true`, `"ja estava em HOLD"`), e o registro de custo e os comentários seguem aceitos — parar
+o trabalho não pode apagar a contabilidade do que já foi gasto.
 
 ```json
 {
@@ -361,6 +383,7 @@ chamada.
 | Etapa de destino inexistente | `400` | `transicoesDisponiveis` |
 | Corpo inválido (validação) | `400` | `erros` |
 | Corpo ilegível (JSON quebrado, encoding errado) | `400` | — |
+| Mudança de etapa de um card em HOLD | `409` | `etapaAtual` |
 | Modelo sem tarifa configurada | `422` | `modelosConhecidos` |
 | Tipo de subtarefa não encontrado no projeto | `422` | `tiposDisponiveis` |
 | `worker` informado numa instância sem o campo Worker | `422` | — |
@@ -377,7 +400,7 @@ viraria `500` mudo e esconderia a causa real.
 mvn test
 ```
 
-78 testes, sem dependência de rede — o client do Jira é exercitado contra `MockRestServiceServer`.
+117 testes, sem dependência de rede — o client do Jira é exercitado contra `MockRestServiceServer`.
 
 ## Estrutura do repositório
 
