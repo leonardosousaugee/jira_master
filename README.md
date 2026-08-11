@@ -285,9 +285,11 @@ para um ledger. Duas razões concretas por que a regra não pode ser "tira o suf
 
 Modelo novo entra acrescentando uma linha em `custo.tarifas`; até lá, o serviço recusa.
 
-> **Nota de preço:** `claude-sonnet-5` está com promoção de entrada até 2026-08-31 (US$ 2,00 /
-> US$ 10,00 por milhão). A tabela usa o preço de lista (US$ 3,00 / US$ 15,00); troque em
-> `application.yml` se a estimativa precisar do promocional.
+> **Preço não se escreve em texto, aqui nem em lugar nenhum.** Os valores existem num lugar só —
+> `custo.tarifas` em `application.yml` — e se leem por `GET /api/tarifas/custo`. Um número copiado
+> para dentro de um documento envelhece calado: quando o preço muda, ficam duas versões e nada diz
+> qual vale. Promoção de entrada é o caso típico; quem quiser estimar com a tarifa promocional troca
+> a linha do modelo na configuração, não anota o valor num parágrafo.
 
 Especificação de origem: [`docs/spec-tarifas-getcusto.md`](docs/spec-tarifas-getcusto.md).
 

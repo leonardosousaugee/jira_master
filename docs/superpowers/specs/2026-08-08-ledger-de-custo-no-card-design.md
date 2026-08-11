@@ -51,18 +51,20 @@ tomando a última ocorrência de cada id — somar tudo direto infla o total em 
 
 ### Como o USD é calculado
 
-Com os **quatro** contadores, cada um na sua tarifa. Tarifas do Claude Opus 5, por milhão de tokens:
+Com os **quatro** contadores, cada um na sua tarifa. O que importa aqui é a relação entre eles, que
+não muda quando o preço muda:
 
 | Contador | Tarifa |
 |---|---|
-| `input_tokens` | $5,00 |
-| `output_tokens` | $25,00 |
-| `cache_creation_input_tokens` | $6,25 (1,25× input, TTL 5min) |
-| `cache_read_input_tokens` | $0,50 (0,1× input) |
+| `input_tokens` | tarifa de entrada do modelo, 1× |
+| `output_tokens` | tarifa de saída, ≈ 5× a de entrada |
+| `cache_creation_input_tokens` | 1,25× a entrada (TTL 5min); 2× no TTL de 1h |
+| `cache_read_input_tokens` | 0,1× a entrada |
 
-Modelos diferentes têm tarifas diferentes (Sonnet 5: $3/$15; Haiku 4.5: $1/$5). Por isso o **USD é
-calculado no momento da escrita**, com as tarifas do modelo que rodou, e gravado pronto. Não se
-recalcula custo a partir das colunas da linha depois.
+Os valores em dólar não estão neste documento de propósito: moram em `custo.tarifas`
+(`application.yml`) e se leem por `GET /api/tarifas/custo`. Cada modelo tem os seus. Por isso o
+**USD é calculado no momento da escrita**, com as tarifas do modelo que rodou, e gravado pronto. Não
+se recalcula custo a partir das colunas da linha depois.
 
 ### Por que os quatro, se a linha só mostra dois
 
@@ -75,8 +77,8 @@ volume. Exemplo real, medido na sessão que produziu esta spec:
 | `cache_creation_input_tokens` | 372.804 |
 | `cache_read_input_tokens` | 8.206.013 |
 | `output_tokens` | 58.743 |
-| **USD correto (quatro tarifas)** | **$7,90** |
-| USD se `cache_read` fosse cobrado como input cheio | $44,83 |
+| **USD correto (quatro tarifas)** | **1×** |
+| USD se `cache_read` fosse cobrado como input cheio | **5,7×** |
 
 **5,7× de erro.** Um ledger que soma os contadores de entrada numa tarifa só não erra na margem —
 erra por múltiplos, e erra sempre para cima, no número que existe justamente para autorizar ou negar

@@ -91,18 +91,21 @@ Contador ausente vale zero. **Todos ausentes não vale zero** — vale erro, sen
 
 ### 2.3 Tabela a embutir
 
-Preços da API da Anthropic por milhão de tokens, referência **2026-06-24**:
+Os números **não são repetidos aqui**. Esta seção pedia uma tabela de preços em texto, e escrever a
+tabela num documento é exatamente o problema que o endpoint veio resolver: uma segunda cópia que
+envelhece calada e ninguém sabe qual das duas está certa.
 
-| Modelo | Entrada | Saída |
-|---|---:|---:|
-| Claude Fable 5 / Mythos 5 | US$ 10,00 | US$ 50,00 |
-| Claude Opus 5 | US$ 5,00 | US$ 25,00 |
-| Claude Opus 4.8 / 4.7 / 4.6 | US$ 5,00 | US$ 25,00 |
-| Claude Sonnet 5 | US$ 3,00 | US$ 15,00 |
-| Claude Sonnet 4.6 | US$ 3,00 | US$ 15,00 |
-| Claude Haiku 4.5 | US$ 1,00 | US$ 5,00 |
+Onde os preços moram, desde que o endpoint subiu:
 
-A data de referência entra no código junto com os números, e sai na resposta como `tabelaVersao`.
+| Camada | O que tem |
+|---|---|
+| `src/main/resources/application.yml`, sob `custo.tarifas` | os números, uma linha por modelo, em dólares por milhão de tokens — **fonte única** |
+| `custo.tabela-versao`, no mesmo arquivo | a data de referência da tabela |
+| `GET /api/tarifas/custo` | a leitura; devolve o dólar calculado e a `tabelaVersao` que produziu o número |
+| `README.md`, seção "Tarifas — a tabela como serviço" | como ler e como usar, sem valor nenhum em dólar |
+
+A data de referência sai na resposta como `tabelaVersao` — sem ela, uma mudança de preço reescreve
+retroativamente o significado de todo número já calculado.
 
 ## 3. Regras que o endpoint tem que respeitar
 
