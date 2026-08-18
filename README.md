@@ -82,12 +82,15 @@ Sobe em `http://localhost:8080`.
 | Swagger UI | http://localhost:8080/swagger-ui.html |
 | OpenAPI JSON | http://localhost:8080/v3/api-docs |
 
-Empacotar:
+Empacotar e rodar com JAR:
 
 ```bash
 mvn clean package
 java -jar target/jira-master-service-1.0.0.jar
 ```
+
+Deploy com Docker (.tar e .sh no Linux):
+- Veja o guia completo em [`docs/deploy-docker.md`](docs/deploy-docker.md).
 
 ## Configuração
 
@@ -416,6 +419,8 @@ docs/                 protocolo operacional e specs de design
 
 ## Documentação
 
+- [`docs/deploy-docker.md`](docs/deploy-docker.md) —
+  guia passo a passo de geração da imagem `.tar` do Docker e deploy no servidor Linux via script `.sh`.
 - [`docs/protocolo-de-controle-de-tarefas.md`](docs/protocolo-de-controle-de-tarefas.md) —
   instruções operacionais que um agente segue para conduzir trabalho pelo board. Escrito para ser
   lido por um agente em execução.
