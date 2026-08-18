@@ -15,7 +15,7 @@ echo ">> Carregando imagem"
 docker load -i "$IMAGE_TAR"
 
 echo ">>  Inicializando container"
-docker run -e TZ=America/Sao_Paulo --cpus="1" -p 8080:8080 --add-host=host.docker.internal:host-gateway  --env-file .env --rm -it -d --name "$CONTAINER_NAME" "$IMAGE_NAME"
+docker run -e TZ=America/Sao_Paulo --cpus="1" -p 8080:8080 --env-file .env --rm -it -d --name "$CONTAINER_NAME" "$IMAGE_NAME"
 
 echo ">>Container inicializado"
 docker attach "$CONTAINER_NAME"
