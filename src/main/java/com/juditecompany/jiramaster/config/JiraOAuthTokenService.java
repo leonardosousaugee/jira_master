@@ -4,6 +4,7 @@ import com.juditecompany.jiramaster.client.dto.JiraOAuthTokenResponse;
 import com.juditecompany.jiramaster.exception.JiraApiException;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.http.MediaType;
 import org.springframework.stereotype.Component;
 import org.springframework.web.client.RestClient;
@@ -47,6 +48,7 @@ public class JiraOAuthTokenService {
     private volatile String accessTokenEmCache;
     private volatile Instant expiraEm = Instant.MIN;
 
+    @Autowired
     public JiraOAuthTokenService(JiraOAuthProperties properties, RestClient.Builder restClientBuilder) {
         this(properties, restClientBuilder, Path.of(".env"));
     }
