@@ -150,9 +150,10 @@ cat .env
 ```
 
 Campos essenciais:
-- `JIRA_BASE_URL`
-- `JIRA_EMAIL`
-- `JIRA_API_TOKEN`
+- `JIRA_OAUTH_CLIENT_ID`
+- `JIRA_OAUTH_CLIENT_SECRET`
+- `JIRA_OAUTH_CLOUD_ID`
+- `JIRA_OAUTH_REFRESH_TOKEN`
 
 ### 3.3 Dar permissão de execução ao script
 

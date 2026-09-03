@@ -110,9 +110,6 @@ class JiraCardServiceImplTest {
 
     private JiraProperties propriedadesDeTeste() {
         JiraProperties properties = new JiraProperties();
-        properties.setBaseUrl("https://juditecompany.atlassian.net");
-        properties.setEmail("leonardo.sousa@witzler-ultragaz.com.br");
-        properties.setApiToken("token-de-teste");
         properties.setDefaultProjectKey("KAN");
         properties.setWorkerFieldId("customfield_10073");
         return properties;
