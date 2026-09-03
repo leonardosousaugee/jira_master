@@ -9,6 +9,15 @@ import org.springframework.validation.annotation.Validated;
 public class JiraProperties {
 
     @NotBlank
+    private String baseUrl;
+
+    @NotBlank
+    private String email;
+
+    @NotBlank
+    private String apiToken;
+
+    @NotBlank
     private String defaultProjectKey;
 
     /**
@@ -39,6 +48,30 @@ public class JiraProperties {
 
     public void setSubtaskIssueTypeId(String subtaskIssueTypeId) {
         this.subtaskIssueTypeId = subtaskIssueTypeId;
+    }
+
+    public String getBaseUrl() {
+        return baseUrl;
+    }
+
+    public void setBaseUrl(String baseUrl) {
+        this.baseUrl = baseUrl;
+    }
+
+    public String getEmail() {
+        return email;
+    }
+
+    public void setEmail(String email) {
+        this.email = email;
+    }
+
+    public String getApiToken() {
+        return apiToken;
+    }
+
+    public void setApiToken(String apiToken) {
+        this.apiToken = apiToken;
     }
 
     public String getDefaultProjectKey() {

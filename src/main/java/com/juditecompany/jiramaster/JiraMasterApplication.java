@@ -1,6 +1,5 @@
 package com.juditecompany.jiramaster;
 
-import com.juditecompany.jiramaster.config.JiraOAuthProperties;
 import com.juditecompany.jiramaster.config.JiraProperties;
 import com.juditecompany.jiramaster.config.TarifaProperties;
 import org.springframework.context.annotation.Bean;
@@ -11,7 +10,7 @@ import org.springframework.boot.autoconfigure.SpringBootApplication;
 import org.springframework.boot.context.properties.EnableConfigurationProperties;
 
 @SpringBootApplication
-@EnableConfigurationProperties({JiraProperties.class, JiraOAuthProperties.class, TarifaProperties.class})
+@EnableConfigurationProperties({JiraProperties.class, TarifaProperties.class})
 public class JiraMasterApplication {
 
     public static void main(String[] args) {

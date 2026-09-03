@@ -11,18 +11,19 @@ import org.springframework.web.client.RestClient;
 
 import java.io.IOException;
 import java.nio.charset.StandardCharsets;
+import java.util.Base64;
 
 @Configuration
 public class RestClientConfig {
 
     @Bean
-    public RestClient jiraRestClient(JiraOAuthProperties oauthProperties, JiraOAuthTokenService tokenService) {
+    public RestClient jiraRestClient(JiraProperties jiraProperties) {
+        String credenciais = jiraProperties.getEmail() + ":" + jiraProperties.getApiToken();
+        String basicAuth = Base64.getEncoder().encodeToString(credenciais.getBytes(StandardCharsets.UTF_8));
+
         return RestClient.builder()
-                .baseUrl("https://api.atlassian.com/ex/jira/" + oauthProperties.getCloudId() + "/rest/api/3")
-                .requestInterceptor((request, body, execution) -> {
-                    request.getHeaders().setBearerAuth(tokenService.obterAccessToken());
-                    return execution.execute(request, body);
-                })
+                .baseUrl(jiraProperties.getBaseUrl() + "/rest/api/3")
+                .defaultHeader(HttpHeaders.AUTHORIZATION, "Basic " + basicAuth)
                 .defaultHeader(HttpHeaders.CONTENT_TYPE, "application/json")
                 .defaultStatusHandler(HttpStatusCode::isError, this::lancarJiraApiException)
                 .build();

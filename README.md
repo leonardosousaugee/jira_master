@@ -99,29 +99,15 @@ Variáveis lidas do `.env` na raiz (via `spring-dotenv`) ou do ambiente. O `.env
 
 | Variável | Obrigatória | Padrão | O que é |
 |---|---|---|---|
-| `JIRA_OAUTH_CLIENT_ID` | sim | — | Client id do app OAuth 2.0 (3LO), registrado em [developer.atlassian.com](https://developer.atlassian.com/console/myapps/) |
-| `JIRA_OAUTH_CLIENT_SECRET` | sim | — | Client secret do mesmo app |
-| `JIRA_OAUTH_CLOUD_ID` | sim | — | Id do site Jira Cloud, obtido em `GET https://api.atlassian.com/oauth/token/accessible-resources` após o primeiro consentimento |
-| `JIRA_OAUTH_REFRESH_TOKEN` | sim | — | Refresh token do primeiro consentimento (authorization code grant). A aplicação reescreve essa linha automaticamente a cada renovação — a Atlassian roda (rotate) o valor a cada troca |
+| `JIRA_BASE_URL` | sim | — | URL da instância, ex. `https://empresa.atlassian.net` |
+| `JIRA_EMAIL` | sim | — | E-mail da conta Atlassian usada na autenticação |
+| `JIRA_API_TOKEN` | sim | — | API token da conta ([gerar aqui](https://id.atlassian.com/manage-profile/security/api-tokens)) |
 | `JIRA_DEFAULT_PROJECT_KEY` | não | `KAN` | Projeto usado quando a requisição não informa um |
 | `JIRA_SUBTASK_ISSUE_TYPE_ID` | não | vazio | Id do tipo de subtarefa. Em branco, é descoberto em runtime lendo os tipos do projeto — preencha só quando o projeto tem mais de um tipo de subtarefa e a descoberta escolhe o errado |
 | `JIRA_WORKER_FIELD_ID` | não | vazio | Id do campo customizado Worker, ex. `customfield_10073`. Em branco, é descoberto em runtime lendo os campos da instância e casando pelo nome `Worker` — preencha só quando o campo foi renomeado ou existe mais de um com esse nome |
 | `SERVER_PORT` | não | `8080` | Porta HTTP |
 
-As quatro primeiras são validadas na subida: faltando qualquer uma, a aplicação não inicia.
-
-### Por que OAuth 2.0 e não API token
-
-Basic Auth com API token — clássico ou "com escopo" (API token with scopes) — não aplica
-controle de escopo de verdade contra a API do Jira Cloud: um token clássico enxerga tudo que a
-conta enxerga, e o recurso "com escopo" tem lacunas conhecidas de suporte. **OAuth 2.0 (3LO) é o
-único mecanismo em que os escopos granulares (`read:jira-work`, `write:jira-work`,
-`read:jira-user`) são aplicados de fato pela Atlassian.**
-
-Isso exige um app OAuth 2.0 registrado em developer.atlassian.com (aba **Permissions** → Jira
-API → escopos granulares acima; aba **Authorization** → callback URL) e um primeiro consentimento
-manual, via navegador, pra obter o `refresh_token` inicial — depois disso a aplicação renova o
-access token sozinha, sem intervenção.
+As três primeiras são validadas na subida: faltando qualquer uma, a aplicação não inicia.
 
 As tarifas de custo por modelo ficam em `src/main/resources/application.yml`, sob `custo.tarifas`,
 em dólares por milhão de tokens, com a data da tabela em `custo.tabela-versao`. Preço muda e modelo

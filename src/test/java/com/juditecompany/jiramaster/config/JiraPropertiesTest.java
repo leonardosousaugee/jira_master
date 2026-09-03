@@ -15,21 +15,27 @@ class JiraPropertiesTest {
     void deveVincularTodasAsPropriedadesQuandoPresentes() {
         contextRunner
                 .withPropertyValues(
-                        "jira.default-project-key=KAN",
-                        "jira.subtask-issue-type-id=10002",
-                        "jira.worker-field-id=customfield_10073")
+                        "jira.base-url=https://juditecompany.atlassian.net",
+                        "jira.email=leonardo.sousa@witzler-ultragaz.com.br",
+                        "jira.api-token=token-de-teste",
+                        "jira.default-project-key=KAN")
                 .run(context -> {
                     assertThat(context).hasNotFailed();
                     JiraProperties props = context.getBean(JiraProperties.class);
+                    assertThat(props.getBaseUrl()).isEqualTo("https://juditecompany.atlassian.net");
+                    assertThat(props.getEmail()).isEqualTo("leonardo.sousa@witzler-ultragaz.com.br");
+                    assertThat(props.getApiToken()).isEqualTo("token-de-teste");
                     assertThat(props.getDefaultProjectKey()).isEqualTo("KAN");
-                    assertThat(props.getSubtaskIssueTypeId()).isEqualTo("10002");
-                    assertThat(props.getWorkerFieldId()).isEqualTo("customfield_10073");
                 });
     }
 
     @Test
-    void deveFalharQuandoDefaultProjectKeyEstaAusente() {
+    void deveFalharQuandoApiTokenEstaAusente() {
         contextRunner
+                .withPropertyValues(
+                        "jira.base-url=https://juditecompany.atlassian.net",
+                        "jira.email=leonardo.sousa@witzler-ultragaz.com.br",
+                        "jira.default-project-key=KAN")
                 .run(context -> assertThat(context).hasFailed());
     }
 
