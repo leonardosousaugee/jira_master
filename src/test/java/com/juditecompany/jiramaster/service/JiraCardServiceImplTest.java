@@ -199,13 +199,34 @@ class JiraCardServiceImplTest {
         JiraCardServiceImpl servico = servicoSemWorkerConfigurado();
         when(jiraApiClient.listarCampos()).thenReturn(List.of(
                 new JiraCampoDto("customfield_10365", "Worker", new JiraCampoEsquemaDto("option"))));
+        when(jiraApiClient.listarContextosDoCampo("customfield_10365"))
+                .thenReturn(List.of(new JiraFieldContextDto("10001")));
+        when(jiraApiClient.listarOpcoesDoContexto("customfield_10365", "10001")).thenReturn(List.of());
         when(jiraApiClient.criarIssue(any())).thenReturn(new JiraCreatedIssueDto("10001", "KAN-1"));
         when(jiraApiClient.buscarIssuePorChave("KAN-1")).thenReturn(issueDeExemplo("KAN-1", "To Do"));
 
         servico.criarCard(new CriarCardRequest("Titulo", "Descricao", "Task", null, "agente-alpha"));
 
+        verify(jiraApiClient).criarOpcao("customfield_10365", "10001", "agente-alpha");
         verify(jiraApiClient).criarIssue(argThat(req ->
                 Map.of("value", "agente-alpha").equals(req.fields().camposCustomizados().get("customfield_10365"))));
+    }
+
+    @Test
+    void naoDeveCriarOpcaoDeNovoQuandoElaJaExisteNoContexto() {
+        JiraCardServiceImpl servico = servicoSemWorkerConfigurado();
+        when(jiraApiClient.listarCampos()).thenReturn(List.of(
+                new JiraCampoDto("customfield_10365", "Worker", new JiraCampoEsquemaDto("option"))));
+        when(jiraApiClient.listarContextosDoCampo("customfield_10365"))
+                .thenReturn(List.of(new JiraFieldContextDto("10001")));
+        when(jiraApiClient.listarOpcoesDoContexto("customfield_10365", "10001"))
+                .thenReturn(List.of(new JiraFieldOptionDto("1", "agente-alpha")));
+        when(jiraApiClient.criarIssue(any())).thenReturn(new JiraCreatedIssueDto("10001", "KAN-1"));
+        when(jiraApiClient.buscarIssuePorChave("KAN-1")).thenReturn(issueDeExemplo("KAN-1", "To Do"));
+
+        servico.criarCard(new CriarCardRequest("Titulo", "Descricao", "Task", null, "agente-alpha"));
+
+        verify(jiraApiClient, never()).criarOpcao(any(), any(), any());
     }
 
     @Test
@@ -213,6 +234,9 @@ class JiraCardServiceImplTest {
         JiraCardServiceImpl servico = servicoSemWorkerConfigurado();
         when(jiraApiClient.listarCampos()).thenReturn(List.of(
                 new JiraCampoDto("customfield_10365", "Worker", new JiraCampoEsquemaDto("array"))));
+        when(jiraApiClient.listarContextosDoCampo("customfield_10365"))
+                .thenReturn(List.of(new JiraFieldContextDto("10001")));
+        when(jiraApiClient.listarOpcoesDoContexto("customfield_10365", "10001")).thenReturn(List.of());
         when(jiraApiClient.criarIssue(any())).thenReturn(new JiraCreatedIssueDto("10001", "KAN-1"));
         when(jiraApiClient.buscarIssuePorChave("KAN-1")).thenReturn(issueDeExemplo("KAN-1", "To Do"));
 

@@ -178,4 +178,43 @@ class JiraApiClientTest {
 
         assertThat(resultado.author().displayName()).isEqualTo("Leonardo");
     }
+
+    @Test
+    void deveListarOsContextosDoCampo() {
+        server.expect(requestTo(BASE_URL + "/field/customfield_10365/context"))
+                .andExpect(method(HttpMethod.GET))
+                .andRespond(withSuccess("""
+                        {"values":[{"id":"10001"}]}
+                        """, MediaType.APPLICATION_JSON));
+
+        java.util.List<JiraFieldContextDto> resultado = client.listarContextosDoCampo("customfield_10365");
+
+        assertThat(resultado).extracting(JiraFieldContextDto::id).containsExactly("10001");
+    }
+
+    @Test
+    void deveListarAsOpcoesDoContexto() {
+        server.expect(requestTo(BASE_URL + "/field/customfield_10365/context/10001/option"))
+                .andExpect(method(HttpMethod.GET))
+                .andRespond(withSuccess("""
+                        {"values":[{"id":"1","value":"agente-alpha"}]}
+                        """, MediaType.APPLICATION_JSON));
+
+        java.util.List<JiraFieldOptionDto> resultado = client.listarOpcoesDoContexto("customfield_10365", "10001");
+
+        assertThat(resultado).extracting(JiraFieldOptionDto::value).containsExactly("agente-alpha");
+    }
+
+    @Test
+    void deveCriarOpcaoNoContexto() {
+        server.expect(requestTo(BASE_URL + "/field/customfield_10365/context/10001/option"))
+                .andExpect(method(HttpMethod.POST))
+                .andExpect(org.springframework.test.web.client.match.MockRestRequestMatchers.content()
+                        .string(org.hamcrest.Matchers.containsString("\"value\":\"agente-alpha\"")))
+                .andRespond(withSuccess());
+
+        client.criarOpcao("customfield_10365", "10001", "agente-alpha");
+
+        server.verify();
+    }
 }
