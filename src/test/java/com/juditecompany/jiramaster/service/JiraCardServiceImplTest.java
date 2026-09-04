@@ -149,8 +149,8 @@ class JiraCardServiceImplTest {
     void deveDescobrirOIdDoCampoWorkerPeloNomeUmaVezSo() {
         JiraCardServiceImpl servico = servicoSemWorkerConfigurado();
         when(jiraApiClient.listarCampos()).thenReturn(List.of(
-                new JiraCampoDto("summary", "Resumo"),
-                new JiraCampoDto("customfield_10073", "Worker")));
+                new JiraCampoDto("summary", "Resumo", null),
+                new JiraCampoDto("customfield_10073", "Worker", new JiraCampoEsquemaDto("string"))));
         when(jiraApiClient.buscarIssuePorChave("KAN-1")).thenReturn(issueComWorker("KAN-1", "agente-alpha"));
 
         CardResponse primeiro = servico.buscarCardPorId("KAN-1");
@@ -163,7 +163,7 @@ class JiraCardServiceImplTest {
     @Test
     void deveDevolverWorkerNuloQuandoAInstanciaNaoTemOCampo() {
         JiraCardServiceImpl servico = servicoSemWorkerConfigurado();
-        when(jiraApiClient.listarCampos()).thenReturn(List.of(new JiraCampoDto("summary", "Resumo")));
+        when(jiraApiClient.listarCampos()).thenReturn(List.of(new JiraCampoDto("summary", "Resumo", null)));
         when(jiraApiClient.buscarIssuePorChave("KAN-1")).thenReturn(issueComWorker("KAN-1", "agente-alpha"));
 
         CardResponse resultado = servico.buscarCardPorId("KAN-1");
@@ -192,6 +192,34 @@ class JiraCardServiceImplTest {
 
         verify(jiraApiClient).criarIssue(argThat(req ->
                 "agente-alpha".equals(req.fields().camposCustomizados().get("customfield_10073"))));
+    }
+
+    @Test
+    void deveGravarWorkerComoObjetoValueQuandoOCampoESelectListDeEscolhaUnica() {
+        JiraCardServiceImpl servico = servicoSemWorkerConfigurado();
+        when(jiraApiClient.listarCampos()).thenReturn(List.of(
+                new JiraCampoDto("customfield_10365", "Worker", new JiraCampoEsquemaDto("option"))));
+        when(jiraApiClient.criarIssue(any())).thenReturn(new JiraCreatedIssueDto("10001", "KAN-1"));
+        when(jiraApiClient.buscarIssuePorChave("KAN-1")).thenReturn(issueDeExemplo("KAN-1", "To Do"));
+
+        servico.criarCard(new CriarCardRequest("Titulo", "Descricao", "Task", null, "agente-alpha"));
+
+        verify(jiraApiClient).criarIssue(argThat(req ->
+                Map.of("value", "agente-alpha").equals(req.fields().camposCustomizados().get("customfield_10365"))));
+    }
+
+    @Test
+    void deveGravarWorkerComoListaDeObjetoValueQuandoOCampoEMultiSelect() {
+        JiraCardServiceImpl servico = servicoSemWorkerConfigurado();
+        when(jiraApiClient.listarCampos()).thenReturn(List.of(
+                new JiraCampoDto("customfield_10365", "Worker", new JiraCampoEsquemaDto("array"))));
+        when(jiraApiClient.criarIssue(any())).thenReturn(new JiraCreatedIssueDto("10001", "KAN-1"));
+        when(jiraApiClient.buscarIssuePorChave("KAN-1")).thenReturn(issueDeExemplo("KAN-1", "To Do"));
+
+        servico.criarCard(new CriarCardRequest("Titulo", "Descricao", "Task", null, "agente-alpha"));
+
+        verify(jiraApiClient).criarIssue(argThat(req ->
+                List.of(Map.of("value", "agente-alpha")).equals(req.fields().camposCustomizados().get("customfield_10365"))));
     }
 
     @Test
@@ -238,7 +266,7 @@ class JiraCardServiceImplTest {
     @Test
     void deveRecusarGravarWorkerQuandoAInstanciaNaoTemOCampo() {
         JiraCardServiceImpl servico = servicoSemWorkerConfigurado();
-        when(jiraApiClient.listarCampos()).thenReturn(List.of(new JiraCampoDto("summary", "Resumo")));
+        when(jiraApiClient.listarCampos()).thenReturn(List.of(new JiraCampoDto("summary", "Resumo", null)));
 
         assertThatThrownBy(() -> servico.criarCard(
                 new CriarCardRequest("Titulo", "Descricao", "Task", null, "agente-alpha")))

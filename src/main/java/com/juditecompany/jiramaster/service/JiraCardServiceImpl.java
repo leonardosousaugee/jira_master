@@ -52,8 +52,10 @@ public class JiraCardServiceImpl implements JiraCardService {
     private final Map<String, String> tipoDeSubtarefaPorProjeto = new ConcurrentHashMap<>();
     private final Map<String, ReentrantLock> locksPorCard = new ConcurrentHashMap<>();
     // Optional vazio e um resultado legitimo — "a instancia nao tem o campo Worker" — e precisa
-    // ficar no cache tanto quanto o id encontrado, senao toda leitura repete o GET /field.
-    private final java.util.concurrent.atomic.AtomicReference<java.util.Optional<String>> workerFieldIdDescoberto =
+    // ficar no cache tanto quanto o campo encontrado, senao toda leitura repete o GET /field.
+    // Guarda o JiraCampoDto inteiro, nao so o id, porque o schema decide o formato do valor na
+    // escrita (string solta para Text Field, objeto para Select List).
+    private final java.util.concurrent.atomic.AtomicReference<java.util.Optional<JiraCampoDto>> campoWorkerDescoberto =
             new java.util.concurrent.atomic.AtomicReference<>();
 
     // A chave entra concatenada na JQL, entao o formato e barreira de seguranca, nao cortesia:
@@ -389,11 +391,32 @@ public class JiraCardServiceImpl implements JiraCardService {
         if (worker == null) {
             return Map.of();
         }
-        String fieldId = resolverWorkerFieldId();
-        if (fieldId == null) {
-            throw new CampoWorkerNaoDisponivelException();
+        String configurado = jiraProperties.getWorkerFieldId();
+        if (configurado != null && !configurado.isBlank()) {
+            // Id fixo escapa a descoberta, entao o schema nunca foi lido: melhor esforco,
+            // string solta — o mesmo comportamento de sempre para quem ja usa esse escape.
+            return Map.of(configurado, worker);
         }
-        return Map.of(fieldId, worker);
+        JiraCampoDto campo = resolverCampoWorker().orElseThrow(CampoWorkerNaoDisponivelException::new);
+        return Map.of(campo.id(), valorParaCampo(campo, worker));
+    }
+
+    /**
+     * O tipo do campo custom decide o formato que o Jira aceita na escrita: Text Field aceita
+     * string solta; Select List de escolha unica ({@code "option"}) e multi-select/labels
+     * ({@code "array"}) exigem objeto — mandar string nesses tipos falha com "Especifique o 'id'
+     * or 'name' valido". Tipo desconhecido cai no comportamento antigo (string), que e o unico
+     * palpite possivel sem mais informacao.
+     */
+    private Object valorParaCampo(JiraCampoDto campo, String worker) {
+        String tipo = campo.schema() == null ? null : campo.schema().type();
+        if ("option".equals(tipo)) {
+            return Map.of("value", worker);
+        }
+        if ("array".equals(tipo)) {
+            return List.of(Map.of("value", worker));
+        }
+        return worker;
     }
 
     /**
@@ -406,15 +429,18 @@ public class JiraCardServiceImpl implements JiraCardService {
         if (configurado != null && !configurado.isBlank()) {
             return configurado;
         }
-        java.util.Optional<String> emCache = workerFieldIdDescoberto.get();
+        return resolverCampoWorker().map(JiraCampoDto::id).orElse(null);
+    }
+
+    private java.util.Optional<JiraCampoDto> resolverCampoWorker() {
+        java.util.Optional<JiraCampoDto> emCache = campoWorkerDescoberto.get();
         if (emCache == null) {
             emCache = jiraApiClient.listarCampos().stream()
                     .filter(campo -> NOME_DO_CAMPO_WORKER.equalsIgnoreCase(campo.name()))
-                    .map(JiraCampoDto::id)
                     .findFirst();
-            workerFieldIdDescoberto.set(emCache);
+            campoWorkerDescoberto.set(emCache);
         }
-        return emCache.orElse(null);
+        return emCache;
     }
 
     /**
