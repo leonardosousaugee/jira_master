@@ -58,6 +58,11 @@ public class JiraCardServiceImpl implements JiraCardService {
     private final java.util.concurrent.atomic.AtomicReference<java.util.Optional<JiraCampoDto>> campoWorkerDescoberto =
             new java.util.concurrent.atomic.AtomicReference<>();
 
+    // Id fixo (JIRA_WORKER_FIELD_ID) escapa a descoberta por nome, mas o schema ainda precisa ser
+    // lido pra saber o formato de escrita — cache proprio pra nao repetir o GET /field a cada card.
+    private final java.util.concurrent.atomic.AtomicReference<java.util.Optional<JiraCampoEsquemaDto>>
+            esquemaDoCampoConfiguradoDescoberto = new java.util.concurrent.atomic.AtomicReference<>();
+
     // A chave entra concatenada na JQL, entao o formato e barreira de seguranca, nao cortesia:
     // so o que o Jira aceita como chave de projeto passa, e isso nao tem como virar clausula.
     private static final java.util.regex.Pattern FORMATO_PROJECT_KEY =
@@ -393,23 +398,21 @@ public class JiraCardServiceImpl implements JiraCardService {
         }
         String configurado = jiraProperties.getWorkerFieldId();
         if (configurado != null && !configurado.isBlank()) {
-            // Id fixo escapa a descoberta, entao o schema nunca foi lido: melhor esforco,
-            // string solta — o mesmo comportamento de sempre para quem ja usa esse escape.
-            return Map.of(configurado, worker);
+            return Map.of(configurado, valorParaCampo(resolverEsquemaDoCampoConfigurado(configurado), worker));
         }
         JiraCampoDto campo = resolverCampoWorker().orElseThrow(CampoWorkerNaoDisponivelException::new);
-        return Map.of(campo.id(), valorParaCampo(campo, worker));
+        return Map.of(campo.id(), valorParaCampo(campo.schema(), worker));
     }
 
     /**
      * O tipo do campo custom decide o formato que o Jira aceita na escrita: Text Field aceita
      * string solta; Select List de escolha unica ({@code "option"}) e multi-select/labels
      * ({@code "array"}) exigem objeto — mandar string nesses tipos falha com "Especifique o 'id'
-     * or 'name' valido". Tipo desconhecido cai no comportamento antigo (string), que e o unico
-     * palpite possivel sem mais informacao.
+     * or 'name' valido". Schema nulo ou tipo desconhecido cai no comportamento antigo (string), que
+     * e o unico palpite possivel sem mais informacao.
      */
-    private Object valorParaCampo(JiraCampoDto campo, String worker) {
-        String tipo = campo.schema() == null ? null : campo.schema().type();
+    private Object valorParaCampo(JiraCampoEsquemaDto schema, String worker) {
+        String tipo = schema == null ? null : schema.type();
         if ("option".equals(tipo)) {
             return Map.of("value", worker);
         }
@@ -417,6 +420,18 @@ public class JiraCardServiceImpl implements JiraCardService {
             return List.of(Map.of("value", worker));
         }
         return worker;
+    }
+
+    private JiraCampoEsquemaDto resolverEsquemaDoCampoConfigurado(String fieldId) {
+        java.util.Optional<JiraCampoEsquemaDto> emCache = esquemaDoCampoConfiguradoDescoberto.get();
+        if (emCache == null) {
+            emCache = jiraApiClient.listarCampos().stream()
+                    .filter(campo -> fieldId.equals(campo.id()))
+                    .map(JiraCampoDto::schema)
+                    .findFirst();
+            esquemaDoCampoConfiguradoDescoberto.set(emCache);
+        }
+        return emCache.orElse(null);
     }
 
     /**

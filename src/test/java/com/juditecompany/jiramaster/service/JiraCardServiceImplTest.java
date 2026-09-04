@@ -185,6 +185,8 @@ class JiraCardServiceImplTest {
 
     @Test
     void deveGravarOWorkerAoCriarCard() {
+        when(jiraApiClient.listarCampos()).thenReturn(List.of(
+                new JiraCampoDto("customfield_10073", "Worker", new JiraCampoEsquemaDto("string"))));
         when(jiraApiClient.criarIssue(any())).thenReturn(new JiraCreatedIssueDto("10001", "KAN-1"));
         when(jiraApiClient.buscarIssuePorChave("KAN-1")).thenReturn(issueComWorker("KAN-1", "agente-alpha"));
 
@@ -234,6 +236,8 @@ class JiraCardServiceImplTest {
 
     @Test
     void deveGravarOWorkerAoEditarCard() {
+        when(jiraApiClient.listarCampos()).thenReturn(List.of(
+                new JiraCampoDto("customfield_10073", "Worker", new JiraCampoEsquemaDto("string"))));
         when(jiraApiClient.buscarIssuePorChave("KAN-1")).thenReturn(issueComWorker("KAN-1", "agente-beta"));
 
         service.editarCard("KAN-1", new EditarCardRequest("Novo titulo", null, "agente-beta"));
@@ -253,6 +257,8 @@ class JiraCardServiceImplTest {
 
     @Test
     void deveGravarOWorkerAoCriarSubCard() {
+        when(jiraApiClient.listarCampos()).thenReturn(List.of(
+                new JiraCampoDto("customfield_10073", "Worker", new JiraCampoEsquemaDto("string"))));
         when(jiraApiClient.criarIssue(any())).thenReturn(new JiraCreatedIssueDto("10002", "KAN-2"));
         when(jiraApiClient.buscarIssuePorChave("KAN-2")).thenReturn(issueComWorker("KAN-2", "agente-alpha"));
         when(jiraApiClient.buscarProjeto("KAN")).thenReturn(projetoComTipos());
