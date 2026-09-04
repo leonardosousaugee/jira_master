@@ -58,12 +58,6 @@ public class JiraCardServiceImpl implements JiraCardService {
     private final java.util.concurrent.atomic.AtomicReference<java.util.Optional<JiraCampoDto>> campoWorkerDescoberto =
             new java.util.concurrent.atomic.AtomicReference<>();
 
-    // Select List de opcao fixa nao aceita valor novo direto na escrita da issue — a opcao
-    // precisa existir antes no contexto do campo. Cache por fieldId evita checar/criar de novo
-    // pra um worker ja visto neste processo.
-    private final Map<String, Set<String>> opcoesConhecidasPorCampo = new ConcurrentHashMap<>();
-    private final ReentrantLock lockOpcoesDeCampo = new ReentrantLock();
-
     // A chave entra concatenada na JQL, entao o formato e barreira de seguranca, nao cortesia:
     // so o que o Jira aceita como chave de projeto passa, e isso nao tem como virar clausula.
     private static final java.util.regex.Pattern FORMATO_PROJECT_KEY =
@@ -417,45 +411,12 @@ public class JiraCardServiceImpl implements JiraCardService {
     private Object valorParaCampo(JiraCampoDto campo, String worker) {
         String tipo = campo.schema() == null ? null : campo.schema().type();
         if ("option".equals(tipo)) {
-            garantirOpcaoExiste(campo.id(), worker);
             return Map.of("value", worker);
         }
         if ("array".equals(tipo)) {
-            garantirOpcaoExiste(campo.id(), worker);
             return List.of(Map.of("value", worker));
         }
         return worker;
-    }
-
-    /**
-     * Select List de opcao fixa recusa valor que nao existe no contexto do campo — worker e texto
-     * livre, entao a opcao e criada em runtime na primeira vez que aparece, em vez de exigir
-     * cadastro manual previo pra cada nome de agente.
-     */
-    private void garantirOpcaoExiste(String fieldId, String valor) {
-        Set<String> conhecidas = opcoesConhecidasPorCampo.computeIfAbsent(fieldId, id -> ConcurrentHashMap.newKeySet());
-        if (conhecidas.contains(valor)) {
-            return;
-        }
-        lockOpcoesDeCampo.lock();
-        try {
-            if (conhecidas.contains(valor)) {
-                return;
-            }
-            List<JiraFieldContextDto> contextos = jiraApiClient.listarContextosDoCampo(fieldId);
-            if (contextos.isEmpty()) {
-                throw new IllegalStateException("Campo " + fieldId + " nao tem nenhum contexto configurado no Jira");
-            }
-            String contextId = contextos.get(0).id();
-            boolean jaExiste = jiraApiClient.listarOpcoesDoContexto(fieldId, contextId).stream()
-                    .anyMatch(opcao -> valor.equals(opcao.value()));
-            if (!jaExiste) {
-                jiraApiClient.criarOpcao(fieldId, contextId, valor);
-            }
-            conhecidas.add(valor);
-        } finally {
-            lockOpcoesDeCampo.unlock();
-        }
     }
 
     /**

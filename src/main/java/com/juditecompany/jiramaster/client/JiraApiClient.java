@@ -93,28 +93,4 @@ public class JiraApiClient {
                 .retrieve()
                 .body(JiraCommentDto.class);
     }
-
-    public java.util.List<JiraFieldContextDto> listarContextosDoCampo(String fieldId) {
-        return restClient.get()
-                .uri("/field/{fieldId}/context", fieldId)
-                .retrieve()
-                .body(JiraFieldContextsResponseDto.class)
-                .values();
-    }
-
-    public java.util.List<JiraFieldOptionDto> listarOpcoesDoContexto(String fieldId, String contextId) {
-        return restClient.get()
-                .uri("/field/{fieldId}/context/{contextId}/option", fieldId, contextId)
-                .retrieve()
-                .body(JiraFieldOptionsResponseDto.class)
-                .values();
-    }
-
-    public void criarOpcao(String fieldId, String contextId, String valor) {
-        restClient.post()
-                .uri("/field/{fieldId}/context/{contextId}/option", fieldId, contextId)
-                .body(new JiraCriarOpcaoRequest(java.util.List.of(new JiraNovaOpcaoDto(valor))))
-                .retrieve()
-                .toBodilessEntity();
-    }
 }
