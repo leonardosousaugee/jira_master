@@ -18,7 +18,8 @@ class JiraPropertiesTest {
                         "jira.base-url=https://juditecompany.atlassian.net",
                         "jira.email=leonardo.sousa@witzler-ultragaz.com.br",
                         "jira.api-token=token-de-teste",
-                        "jira.default-project-key=KAN")
+                        "jira.default-project-key=KAN",
+                        "jira.worker-field-name=Worker")
                 .run(context -> {
                     assertThat(context).hasNotFailed();
                     JiraProperties props = context.getBean(JiraProperties.class);
@@ -26,6 +27,7 @@ class JiraPropertiesTest {
                     assertThat(props.getEmail()).isEqualTo("leonardo.sousa@witzler-ultragaz.com.br");
                     assertThat(props.getApiToken()).isEqualTo("token-de-teste");
                     assertThat(props.getDefaultProjectKey()).isEqualTo("KAN");
+                    assertThat(props.getWorkerFieldName()).isEqualTo("Worker");
                 });
     }
 

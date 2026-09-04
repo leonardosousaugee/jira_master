@@ -104,7 +104,8 @@ Variáveis lidas do `.env` na raiz (via `spring-dotenv`) ou do ambiente. O `.env
 | `JIRA_API_TOKEN` | sim | — | API token da conta ([gerar aqui](https://id.atlassian.com/manage-profile/security/api-tokens)) |
 | `JIRA_DEFAULT_PROJECT_KEY` | não | `KAN` | Projeto usado quando a requisição não informa um |
 | `JIRA_SUBTASK_ISSUE_TYPE_ID` | não | vazio | Id do tipo de subtarefa. Em branco, é descoberto em runtime lendo os tipos do projeto — preencha só quando o projeto tem mais de um tipo de subtarefa e a descoberta escolhe o errado |
-| `JIRA_WORKER_FIELD_ID` | não | vazio | Id do campo customizado Worker, ex. `customfield_10073`. Em branco, é descoberto em runtime lendo os campos da instância e casando pelo nome `Worker` — preencha só quando o campo foi renomeado ou existe mais de um com esse nome |
+| `JIRA_WORKER_FIELD_NAME` | não | `Worker` | Nome visível do campo Worker, usado pra achar o id em runtime — preencha só se o campo tiver outro nome na sua instância (ex. `worker_ai`). Não exige permissão de administrador do Jira |
+| `JIRA_WORKER_FIELD_ID` | não | vazio | Id do campo customizado Worker, ex. `customfield_10073`. Em branco, é descoberto em runtime casando pelo nome (`JIRA_WORKER_FIELD_NAME`) — preencha só quando existe mais de um campo com esse mesmo nome e a descoberta escolhe o errado |
 | `SERVER_PORT` | não | `8080` | Porta HTTP |
 
 As três primeiras são validadas na subida: faltando qualquer uma, a aplicação não inicia.

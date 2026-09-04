@@ -8,6 +8,7 @@ jira:
   default-project-key: ${JIRA_DEFAULT_PROJECT_KEY:KAN}
   subtask-issue-type-id: ${JIRA_SUBTASK_ISSUE_TYPE_ID:}
   worker-field-id: ${JIRA_WORKER_FIELD_ID:}
+  worker-field-name: ${JIRA_WORKER_FIELD_NAME:Worker}
 
 # Tarifas em dolares por milhao de tokens, referencia 2026-06-24. Os cinco contadores tem precos
 # diferentes e a diferenca nao e cosmetica: cache lido custa um decimo da entrada nova e domina o

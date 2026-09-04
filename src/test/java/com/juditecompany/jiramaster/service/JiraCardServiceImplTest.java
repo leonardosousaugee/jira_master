@@ -115,6 +115,7 @@ class JiraCardServiceImplTest {
         properties.setApiToken("token-de-teste");
         properties.setDefaultProjectKey("KAN");
         properties.setWorkerFieldId("customfield_10073");
+        properties.setWorkerFieldName("Worker");
         return properties;
     }
 

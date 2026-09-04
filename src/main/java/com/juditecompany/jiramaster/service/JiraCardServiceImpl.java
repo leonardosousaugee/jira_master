@@ -73,7 +73,6 @@ public class JiraCardServiceImpl implements JiraCardService {
     // BLOQUEADO e HOLD sao o mesmo estado. O fluxo do KAN so tem HOLD; os outros nomes existem
     // para o servico funcionar em board que chame a mesma etapa de outro jeito.
     private static final Set<String> NOMES_DE_HOLD = Set.of("HOLD", "BLOQUEADO", "BLOCKED", "BLOCK");
-    private static final String NOME_DO_CAMPO_WORKER = "Worker";
 
     public JiraCardServiceImpl(JiraApiClient jiraApiClient, JiraCardMapper cardMapper,
                                 AdfMapper adfMapper, JiraProperties jiraProperties,
@@ -451,7 +450,7 @@ public class JiraCardServiceImpl implements JiraCardService {
         java.util.Optional<JiraCampoDto> emCache = campoWorkerDescoberto.get();
         if (emCache == null) {
             emCache = jiraApiClient.listarCampos().stream()
-                    .filter(campo -> NOME_DO_CAMPO_WORKER.equalsIgnoreCase(campo.name()))
+                    .filter(campo -> jiraProperties.getWorkerFieldName().equalsIgnoreCase(campo.name()))
                     .findFirst();
             campoWorkerDescoberto.set(emCache);
         }

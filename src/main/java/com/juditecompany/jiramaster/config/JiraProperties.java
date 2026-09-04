@@ -29,10 +29,18 @@ public class JiraProperties {
 
     /**
      * Id do campo customizado Worker (ex.: {@code customfield_10073}). Opcional: em branco, o id e
-     * descoberto em runtime lendo os campos da instancia e casando pelo nome "Worker". Serve de
-     * escape quando existe mais de um campo com esse nome ou o campo foi renomeado.
+     * descoberto em runtime lendo os campos da instancia e casando pelo nome configurado em
+     * {@code workerFieldName}. Serve de escape quando existe mais de um campo com esse nome.
      */
     private String workerFieldId;
+
+    /**
+     * Nome visivel do campo Worker, usado na descoberta por nome quando {@code workerFieldId}
+     * esta em branco. Existe porque o nome do campo e o unico jeito de achar o id sem precisar de
+     * permissao de administrador do Jira pra ver a lista de campos customizados.
+     */
+    @NotBlank
+    private String workerFieldName;
 
     public String getWorkerFieldId() {
         return workerFieldId;
@@ -40,6 +48,14 @@ public class JiraProperties {
 
     public void setWorkerFieldId(String workerFieldId) {
         this.workerFieldId = workerFieldId;
+    }
+
+    public String getWorkerFieldName() {
+        return workerFieldName;
+    }
+
+    public void setWorkerFieldName(String workerFieldName) {
+        this.workerFieldName = workerFieldName;
     }
 
     public String getSubtaskIssueTypeId() {
