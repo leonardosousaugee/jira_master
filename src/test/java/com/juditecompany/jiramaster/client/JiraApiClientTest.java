@@ -178,4 +178,18 @@ class JiraApiClientTest {
 
         assertThat(resultado.author().displayName()).isEqualTo("Leonardo");
     }
+
+    @Test
+    void deveBuscarComentarios() {
+        server.expect(requestTo(BASE_URL + "/issue/KAN-1/comment"))
+                .andExpect(method(HttpMethod.GET))
+                .andRespond(withSuccess("""
+                        {"comments":[{"id":"10050","author":{"displayName":"Leonardo"},"body":{"type":"doc","version":1,"content":[]},"created":"2026-08-05T10:00:00.000+0000"}]}
+                        """, MediaType.APPLICATION_JSON));
+
+        JiraCommentsResponseDto resultado = client.buscarComentarios("KAN-1");
+
+        assertThat(resultado.comments()).hasSize(1);
+        assertThat(resultado.comments().get(0).author().displayName()).isEqualTo("Leonardo");
+    }
 }

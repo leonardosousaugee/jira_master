@@ -139,6 +139,17 @@ class JiraCardControllerTest {
     }
 
     @Test
+    void deveListarComentariosERetornar200() throws Exception {
+        var comentario = new com.juditecompany.jiramaster.dto.response.ComentarioResponse(
+                "10050", "Leonardo", "Comentario", Instant.parse("2026-08-05T10:00:00Z"));
+        when(service.listarComentarios("KAN-1")).thenReturn(List.of(comentario));
+
+        mockMvc.perform(get("/api/cards/KAN-1/comentarios"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$[0].autor").value("Leonardo"));
+    }
+
+    @Test
     void deveAceitarEdicaoQueSoMexeNaDescricao() throws Exception {
         CardResponse resposta = new CardResponse("KAN-1", "Titulo", "Nova", "To Do", "Medium", "Task", "KAN", null,
                 Instant.parse("2026-08-05T10:00:00Z"), Instant.parse("2026-08-05T10:00:00Z"), null, List.of(), 0);

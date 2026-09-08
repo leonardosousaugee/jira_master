@@ -6,6 +6,8 @@ target/
 
 # Environment / secrets
 .env
+zscaler-ca.pem
+*.pem
 
 # IDE
 *.iml

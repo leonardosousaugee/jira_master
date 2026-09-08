@@ -420,6 +420,9 @@ docs/                 protocolo operacional e specs de design
 
 ## Documentação
 
+- [`docs/manual-setup.md`](docs/manual-setup.md) —
+  passo a passo pra rodar local na mão, com diagrama de onde este serviço entra no pipeline e a
+  lista de problemas reais já encontrados (TLS corporativo, endpoint de comentários faltando, etc.).
 - [`docs/deploy-docker.md`](docs/deploy-docker.md) —
   guia passo a passo de geração da imagem `.tar` do Docker e deploy no servidor Linux via script `.sh`.
 - [`docs/protocolo-de-controle-de-tarefas.md`](docs/protocolo-de-controle-de-tarefas.md) —

@@ -787,4 +787,23 @@ class JiraCardServiceImplTest {
 
         assertThat(resultado.autor()).isEqualTo("Leonardo");
     }
+
+    @Test
+    void deveListarComentarios() {
+        when(jiraApiClient.buscarComentarios("KAN-1")).thenReturn(new JiraCommentsResponseDto(List.of(
+                new JiraCommentDto("10050", new JiraCommentAuthorDto("Leonardo"), null, "2026-08-05T10:00:00.000+0000"))));
+
+        var resultado = service.listarComentarios("KAN-1");
+
+        assertThat(resultado).hasSize(1);
+        assertThat(resultado.get(0).autor()).isEqualTo("Leonardo");
+    }
+
+    @Test
+    void deveTraduzirJiraApiException404ParaCardNotFoundExceptionAoListarComentarios() {
+        when(jiraApiClient.buscarComentarios("KAN-999")).thenThrow(new JiraApiException(HttpStatus.NOT_FOUND, "nao existe"));
+
+        assertThatThrownBy(() -> service.listarComentarios("KAN-999"))
+                .isInstanceOf(CardNotFoundException.class);
+    }
 }

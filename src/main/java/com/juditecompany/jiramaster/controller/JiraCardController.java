@@ -97,6 +97,11 @@ public class JiraCardController {
         return ResponseEntity.status(HttpStatus.CREATED).body(service.registrarCusto(issueKey, request));
     }
 
+    @GetMapping("/{issueKey}/comentarios")
+    public ResponseEntity<List<ComentarioResponse>> listarComentarios(@PathVariable String issueKey) {
+        return ResponseEntity.ok(service.listarComentarios(issueKey));
+    }
+
     @PostMapping("/{issueKey}/comentarios")
     public ResponseEntity<ComentarioResponse> adicionarComentario(@PathVariable String issueKey,
                                                                     @Valid @RequestBody AdicionarComentarioRequest request) {

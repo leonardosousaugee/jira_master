@@ -493,6 +493,20 @@ public class JiraCardServiceImpl implements JiraCardService {
         return cardMapper.paraComentarioResponse(criado);
     }
 
+    @Override
+    public List<ComentarioResponse> listarComentarios(String issueKey) {
+        try {
+            return jiraApiClient.buscarComentarios(issueKey).comments().stream()
+                    .map(cardMapper::paraComentarioResponse)
+                    .toList();
+        } catch (JiraApiException ex) {
+            if (ex.getStatus().equals(HttpStatus.NOT_FOUND)) {
+                throw new CardNotFoundException(issueKey);
+            }
+            throw ex;
+        }
+    }
+
     private JiraIssueDto buscarIssueOuLancarNaoEncontrado(String issueKey) {
         try {
             return jiraApiClient.buscarIssuePorChave(issueKey);

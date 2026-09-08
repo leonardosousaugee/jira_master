@@ -26,6 +26,8 @@ public interface JiraCardService {
 
     ComentarioResponse adicionarComentario(String issueKey, AdicionarComentarioRequest request);
 
+    List<ComentarioResponse> listarComentarios(String issueKey);
+
     LinhaCusto registrarCusto(String issueKey, RegistrarCustoRequest request);
 
     List<CardResumoResponse> listarSubCards(String issueKey);

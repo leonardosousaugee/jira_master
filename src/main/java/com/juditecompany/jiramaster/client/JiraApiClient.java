@@ -93,4 +93,11 @@ public class JiraApiClient {
                 .retrieve()
                 .body(JiraCommentDto.class);
     }
+
+    public JiraCommentsResponseDto buscarComentarios(String issueKey) {
+        return restClient.get()
+                .uri("/issue/{issueKey}/comment", issueKey)
+                .retrieve()
+                .body(JiraCommentsResponseDto.class);
+    }
 }
